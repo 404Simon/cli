@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
-	"github.com/fosrl/cli/cmd/create"
-	"github.com/fosrl/cli/cmd/list"
-	"github.com/fosrl/cli/cmd/login"
+	"github.com/fosrl/cli/cmd/auth"
+	selectcmd "github.com/fosrl/cli/cmd/select"
+	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -22,28 +22,18 @@ var rootCmd = &cobra.Command{
 // Execute is called by main.go
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
 func init() {
 	cobra.OnInitialize(initConfig)
-
-	rootCmd.PersistentFlags().StringVar(
-		&cfgFile,
-		"config",
-		"",
-		"config file (default is $HOME/.pangolin.yaml)",
-	)
-
-	rootCmd.PersistentFlags().String("org", "", "Organization name")
-	viper.BindPFlag("org", rootCmd.PersistentFlags().Lookup("org"))
+	rootCmd.PersistentFlags().String("orgId", "", "Organization ID")
+	viper.BindPFlag("orgId", rootCmd.PersistentFlags().Lookup("orgId"))
 
 	// Register verb commands
-	rootCmd.AddCommand(list.ListCmd)
-	rootCmd.AddCommand(create.CreateCmd)
-	rootCmd.AddCommand(login.LoginCmd)
+	rootCmd.AddCommand(auth.AuthCmd)
+	rootCmd.AddCommand(selectcmd.SelectCmd)
 }
 
 func initConfig() {
@@ -52,10 +42,21 @@ func initConfig() {
 	} else {
 		viper.AddConfigPath("$HOME")
 		viper.SetConfigName(".pangolin")
+		viper.SetConfigType("yaml")
 	}
 	viper.AutomaticEnv() // read env variables
 
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+	// Initialize logger (must be done before any logging)
+	utils.InitLogger()
+
+	if err := viper.ReadInConfig(); err != nil {
+		utils.Warning("Failed to read config file: %v", err)
+	}
+
+	// Initialize API client (always succeeds - may be unauthenticated)
+	if err := api.InitGlobalClient(); err != nil {
+		// This should never happen, but log it just in case
+		utils.Error("Failed to initialize API client: %v", err)
+		os.Exit(1)
 	}
 }

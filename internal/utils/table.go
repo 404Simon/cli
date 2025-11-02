@@ -18,4 +18,3 @@ func PrintTable(headers []string, rows [][]string) {
 	}
 	w.Flush()
 }
-
