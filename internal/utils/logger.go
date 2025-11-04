@@ -3,8 +3,10 @@ package utils
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/viper"
 )
 
@@ -17,20 +19,19 @@ const (
 )
 
 var (
-	// ANSI color codes
-	colorReset   = "\033[0m"
-	colorInfo    = "\033[36m" // Cyan
-	colorDebug   = "\033[90m" // Bright black (gray)
-	colorSuccess = "\033[32m" // Green
-	colorWarning = "\033[33m" // Yellow
-	colorError   = "\033[31m" // Red
-
 	// Icons
 	iconInfo    = "ℹ"
 	iconDebug   = "⚙"
 	iconSuccess = "✓"
 	iconWarning = "⚠"
 	iconError   = "✗"
+	
+	// Color styles using lipgloss
+	colorInfoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorInfo))
+	colorDebugStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorDebug))
+	colorSuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorSuccess))
+	colorWarningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+	colorErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorError))
 )
 
 // Logger is a simple logger wrapper around fmt.Printf
@@ -83,7 +84,8 @@ func (l *Logger) Debug(format string, args ...interface{}) {
 		return
 	}
 	message := fmt.Sprintf(format, args...)
-	fmt.Printf("%s%s%s %s", colorDebug, iconDebug, colorReset, message)
+	icon := colorDebugStyle.Render(iconDebug)
+	fmt.Printf("%s %s", icon, message)
 	if !strings.HasSuffix(message, "\n") {
 		fmt.Println()
 	}
@@ -92,7 +94,8 @@ func (l *Logger) Debug(format string, args ...interface{}) {
 // Success logs a success message
 func (l *Logger) Success(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	fmt.Printf("%s%s%s %s", colorSuccess, iconSuccess, colorReset, message)
+	icon := colorSuccessStyle.Render(iconSuccess)
+	fmt.Printf("%s %s", icon, message)
 	if !strings.HasSuffix(message, "\n") {
 		fmt.Println()
 	}
@@ -101,7 +104,8 @@ func (l *Logger) Success(format string, args ...interface{}) {
 // Error logs an error message
 func (l *Logger) Error(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	fmt.Fprintf(os.Stderr, "%s%s%s %s", colorError, iconError, colorReset, message)
+	icon := colorErrorStyle.Render(iconError)
+	fmt.Fprintf(os.Stderr, "%s %s", icon, message)
 	if !strings.HasSuffix(message, "\n") {
 		fmt.Fprintln(os.Stderr)
 	}
@@ -110,7 +114,8 @@ func (l *Logger) Error(format string, args ...interface{}) {
 // Warning logs a warning message
 func (l *Logger) Warning(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	fmt.Printf("%s%s%s %s", colorWarning, iconWarning, colorReset, message)
+	icon := colorWarningStyle.Render(iconWarning)
+	fmt.Printf("%s %s", icon, message)
 	if !strings.HasSuffix(message, "\n") {
 		fmt.Println()
 	}
@@ -141,4 +146,14 @@ func Error(format string, args ...interface{}) {
 // Warning logs a warning message using the global logger
 func Warning(format string, args ...interface{}) {
 	GetLogger().Warning(format, args...)
+}
+
+// GetDefaultLogPath returns the default log file path for client logs
+func GetDefaultLogPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "/tmp/olm.log"
+	}
+	// Use filepath for cross-platform compatibility
+	return filepath.Join(homeDir, ".pangolin", "logs", "client.log")
 }

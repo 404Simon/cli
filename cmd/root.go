@@ -6,7 +6,11 @@ import (
 	"github.com/fosrl/cli/cmd/auth"
 	"github.com/fosrl/cli/cmd/auth/login"
 	"github.com/fosrl/cli/cmd/auth/logout"
+	"github.com/fosrl/cli/cmd/down"
+	"github.com/fosrl/cli/cmd/logs"
 	selectcmd "github.com/fosrl/cli/cmd/select"
+	"github.com/fosrl/cli/cmd/status"
+	"github.com/fosrl/cli/cmd/up"
 	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
@@ -36,10 +40,17 @@ func init() {
 	// Register verb commands
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(selectcmd.SelectCmd)
+	rootCmd.AddCommand(up.UpCmd)
+	rootCmd.AddCommand(down.DownCmd)
+	rootCmd.AddCommand(logs.LogsCmd)
+	rootCmd.AddCommand(status.StatusCmd)
 	
 	// Add login and logout as top-level aliases
 	rootCmd.AddCommand(login.LoginCmd)
 	rootCmd.AddCommand(logout.LogoutCmd)
+	
+	// Hide the completion command
+	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 }
 
 func initConfig() {
