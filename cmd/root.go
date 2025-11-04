@@ -21,8 +21,7 @@ var cfgFile string
 
 var rootCmd = &cobra.Command{
 	Use:   "pangolin",
-	Short: "Pangolin CLI - manage your sites and clients easily",
-	Long:  `Pangolin CLI is an example Go CLI using Cobra and Viper.`,
+	Short: "Pangolin CLI",
 }
 
 // Execute is called by main.go
@@ -30,6 +29,11 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// GetRootCmd returns the root command for documentation generation
+func GetRootCmd() *cobra.Command {
+	return rootCmd
 }
 
 func init() {
