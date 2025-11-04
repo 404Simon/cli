@@ -57,9 +57,6 @@ var clientDownCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Clear the TUI lines (header + blank + 5 logs + blank + status = 9 lines)
-		fmt.Print("\033[9A\r\033[0J") // Move up 9 lines, go to start of line, clear to end
-
 		if completed {
 			utils.Success("Client shutdown completed")
 		} else {

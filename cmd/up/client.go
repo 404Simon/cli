@@ -303,10 +303,6 @@ var clientCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			// Clear the TUI lines (header + blank + 5 logs + blank + status = 9 lines)
-			// Move cursor up 9 lines, then clear from cursor to end of screen
-			fmt.Print("\033[9A\r\033[0J") // Move up 9 lines, go to start of line, clear to end
-
 			// Check if the process completed successfully or was killed
 			if !completed {
 				// User exited early - subprocess was killed

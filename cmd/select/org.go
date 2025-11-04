@@ -3,7 +3,6 @@ package selectcmd
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fosrl/cli/internal/olm"
 	"github.com/fosrl/cli/internal/tui"
 	"github.com/fosrl/cli/internal/utils"
@@ -57,11 +56,6 @@ func monitorOrgSwitch(orgID string) {
 	logFile := utils.GetDefaultLogPath()
 
 	// Show live log preview and status during switch
-	statusIconStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("46")) // Bright green (ColorSuccess)
-	statusSwitchingIconStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("220")) // Yellow/Orange (ColorWarning)
-
 	completed, err := tui.NewLogPreview(tui.LogPreviewConfig{
 		LogFile: logFile,
 		Header:  "Switching organization...",
@@ -77,25 +71,19 @@ func monitorOrgSwitch(orgID string) {
 		},
 		StatusFormatter: func(isRunning bool, status *olm.StatusResponse) string {
 			if !isRunning || status == nil {
-				icon := statusSwitchingIconStyle.Render("○")
-				return fmt.Sprintf("%s Switching...", icon)
+				return "Client not running"
 			} else if status.OrgID == orgID && status.Registered {
-				icon := statusIconStyle.Render("✓")
-				return fmt.Sprintf("%s Switched to %s (Registered)", icon, orgID)
+				return fmt.Sprintf("Switched to %s (Registered)", orgID)
 			} else if status.OrgID == orgID && !status.Registered {
-				icon := statusSwitchingIconStyle.Render("○")
-				return fmt.Sprintf("%s Switched to %s (Registering interface...)", icon, orgID)
+				return fmt.Sprintf("Switched to %s (Registering interface)", orgID)
 			} else {
-				icon := statusSwitchingIconStyle.Render("○")
-				return fmt.Sprintf("%s Switching (current: %s)...", icon, status.OrgID)
+				return fmt.Sprintf("Switching (current: %s)", status.OrgID)
 			}
 		},
 	})
 
 	// Clear the TUI lines after completion
 	if completed {
-		// Move cursor up 9 lines (header + blank + 5 logs + blank + status = 9 lines)
-		fmt.Print("\033[9A\r\033[0J")
 		utils.Success("Successfully switched organization to: %s", orgID)
 	} else if err != nil {
 		utils.Warning("Failed to monitor organization switch: %v", err)

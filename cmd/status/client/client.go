@@ -39,11 +39,12 @@ var ClientCmd = &cobra.Command{
 // printStatusTable prints the status information in a table format
 func printStatusTable(status *olm.StatusResponse) {
 	// Print connection status
-	headers := []string{"STATUS", "INTERFACE CREATED", "TUNNEL IP", "VERSION"}
+	headers := []string{"STATUS", "REGISTERED", "ORG ID", "TUNNEL IP", "VERSION"}
 	rows := [][]string{
 		{
 			formatStatus(status.Status, status.Connected),
 			fmt.Sprintf("%t", status.Registered),
+			status.OrgID,
 			status.TunnelIP,
 			status.Version,
 		},

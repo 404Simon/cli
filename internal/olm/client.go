@@ -162,9 +162,6 @@ func (c *Client) SwitchOrg(orgID string) (*SwitchOrgResponse, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// print jsonData for debugging
-	fmt.Printf("SwitchOrg request body: %s\n", string(jsonData))
-
 	resp, err := c.doRequest("POST", "/switch-org", bytes.NewBuffer(jsonData), map[string]string{
 		"Content-Type": "application/json",
 	})
