@@ -127,7 +127,7 @@ var clientCmd = &cobra.Command{
 					olmName = strings.TrimSpace(olmName)
 				}
 
-				response, err := api.GlobalClient.CreateOlm(olmName)
+				response, err := api.GlobalClient.CreateOlm(olmName, userID)
 				if err != nil {
 					utils.Error("Failed to create OLM: %v", err)
 					os.Exit(1)
@@ -140,7 +140,6 @@ var clientCmd = &cobra.Command{
 
 				olmID = response.OlmID
 				olmSecret = response.Secret
-				utils.Success("Created and saved OLM credentials")
 			}
 		}
 
