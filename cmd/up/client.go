@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -73,10 +72,12 @@ var clientCmd = &cobra.Command{
 
 		// Get OLM credentials: from flags, or keyring, or create new
 		var olmID, olmSecret string
+		var credentialsFromKeyring bool
 		if flagID != "" && flagSecret != "" {
 			// Use provided flags
 			olmID = flagID
 			olmSecret = flagSecret
+			credentialsFromKeyring = false
 		} else if flagID != "" || flagSecret != "" {
 			// If only one flag is provided, require both
 			utils.Error("Both --id and --secret must be provided together, or neither (to use keyring or create new)")
@@ -139,6 +140,10 @@ var clientCmd = &cobra.Command{
 
 				olmID = response.OlmID
 				olmSecret = response.Secret
+				credentialsFromKeyring = false
+			} else {
+				// Successfully retrieved from keyring
+				credentialsFromKeyring = true
 			}
 		}
 
@@ -397,6 +402,17 @@ var clientCmd = &cobra.Command{
 			}
 		}
 
+		// Get UserToken if credentials came from keyring
+		var userToken string
+		if credentialsFromKeyring {
+			token, err := api.GetSessionToken()
+			if err != nil {
+				utils.Warning("Failed to get session token: %v", err)
+			} else {
+				userToken = token
+			}
+		}
+
 		olmConfig := olmpkg.Config{
 			Endpoint:             endpoint,
 			ID:                   olmID,
@@ -409,13 +425,16 @@ var clientCmd = &cobra.Command{
 			EnableAPI:            enableAPI,
 			HTTPAddr:             httpAddr,
 			SocketPath:           socketPath,
-			PingInterval:         pingInterval,
-			PingTimeout:          pingTimeout,
 			Holepunch:            holepunch,
 			TlsClientCert:        tlsClientCert,
 			PingIntervalDuration: pingIntervalDuration,
 			PingTimeoutDuration:  pingTimeoutDuration,
 			Version:              version,
+		}
+
+		// Add UserToken if credentials came from keyring
+		if credentialsFromKeyring && userToken != "" {
+			olmConfig.UserToken = userToken
 		}
 
 		// Check if running with elevated permissions (required for network interface creation)
