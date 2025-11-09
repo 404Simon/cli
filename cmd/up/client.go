@@ -42,6 +42,7 @@ var (
 	flagVersion       string
 	flagAttached      bool
 	flagLogFile       string
+	flagUserToken     string
 )
 
 var clientCmd = &cobra.Command{
@@ -147,6 +148,18 @@ var clientCmd = &cobra.Command{
 			}
 		}
 
+		// Get UserToken if credentials came from keyring (must happen in parent process)
+		// This cannot happen in the subprocess because it runs as root and can't access user's keyring
+		var userToken string
+		if credentialsFromKeyring {
+			token, err := api.GetSessionToken()
+			if err != nil {
+				utils.Warning("Failed to get session token: %v", err)
+			} else {
+				userToken = token
+			}
+		}
+
 		// Handle log file setup - if detached mode, always use log file
 		logFile := flagLogFile
 		if !flagAttached && logFile == "" {
@@ -182,6 +195,11 @@ var clientCmd = &cobra.Command{
 			}
 			if endpoint != "" {
 				cmdArgs = append(cmdArgs, "--endpoint", endpoint)
+			}
+
+			// Pass UserToken to subprocess if we have it (from keyring in parent process)
+			if userToken != "" {
+				cmdArgs = append(cmdArgs, "--user-token", userToken)
 			}
 
 			// Optional flags - only include if they were explicitly set
@@ -402,14 +420,20 @@ var clientCmd = &cobra.Command{
 			}
 		}
 
-		// Get UserToken if credentials came from keyring
-		var userToken string
-		if credentialsFromKeyring {
-			token, err := api.GetSessionToken()
-			if err != nil {
-				utils.Warning("Failed to get session token: %v", err)
-			} else {
-				userToken = token
+		// Get UserToken from flag (passed from parent process) or from keyring (if in attached mode)
+		// Note: userToken is already declared in outer scope, but in attached mode we may need to fetch it
+		if flagUserToken != "" {
+			// UserToken was passed from parent process (detached mode)
+			userToken = flagUserToken
+		} else if credentialsFromKeyring {
+			// In attached mode, fetch from keyring (if not already set in parent process)
+			if userToken == "" {
+				token, err := api.GetSessionToken()
+				if err != nil {
+					utils.Warning("Failed to get session token: %v", err)
+				} else {
+					userToken = token
+				}
 			}
 		}
 
@@ -432,8 +456,8 @@ var clientCmd = &cobra.Command{
 			Version:              version,
 		}
 
-		// Add UserToken if credentials came from keyring
-		if credentialsFromKeyring && userToken != "" {
+		// Add UserToken if we have it (from flag or keyring)
+		if userToken != "" {
 			olmConfig.UserToken = userToken
 		}
 
@@ -484,6 +508,7 @@ func init() {
 	clientCmd.Flags().StringVar(&flagVersion, "version", "", "Version (default: 1)")
 	clientCmd.Flags().BoolVar(&flagAttached, "attach", false, "Run in attached mode (foreground, default is detached)")
 	clientCmd.Flags().StringVar(&flagLogFile, "log-file", "", "Path to log file (defaults to standard log location when detached)")
+	clientCmd.Flags().StringVar(&flagUserToken, "user-token", "", "User session token (internal use, passed from parent process)")
 
 	UpCmd.AddCommand(clientCmd)
 }

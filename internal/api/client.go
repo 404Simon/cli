@@ -33,7 +33,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 	// Default session cookie name
 	sessionCookieName := config.SessionCookieName
 	if sessionCookieName == "" {
-		sessionCookieName = "p_session"
+		sessionCookieName = "p_session_token"
 	}
 
 	client := &Client{
