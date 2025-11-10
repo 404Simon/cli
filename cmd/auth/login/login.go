@@ -270,10 +270,15 @@ func loginWithWeb(hostname string) (string, error) {
 	}
 }
 
+var (
+	flagCred bool
+)
+
 var LoginCmd = &cobra.Command{
-	Use:   "login",
+	Use:   "login [hostname]",
 	Short: "Login to Pangolin",
 	Long:  "Interactive login to select your hosting option and configure access.",
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Check if user is already logged in
 		if err := utils.EnsureLoggedIn(); err == nil {
@@ -291,42 +296,63 @@ var LoginCmd = &cobra.Command{
 		var hostname string
 		var loginMethod LoginMethod
 
-		// First question: select hosting option
-		form := huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[HostingOption]().
-					Title("Select your hosting option").
-					Options(
-						huh.NewOption("Pangolin Cloud (app.pangolin.net)", HostingOptionCloud),
-						huh.NewOption("Self-hosted or Dedicated instance", HostingOptionSelfHosted),
-					).
-					Value(&hostingOption),
-			),
-		)
-
-		if err := form.Run(); err != nil {
-			utils.Error("Error: %v", err)
-			return
+		// Check if hostname was provided as positional argument
+		hostnameProvided := len(args) > 0
+		if hostnameProvided {
+			hostname = args[0]
 		}
 
-		// If self-hosted, prompt for hostname
-		if hostingOption == HostingOptionSelfHosted {
-			hostnameForm := huh.NewForm(
+		// If hostname is provided, default to web authentication unless --cred is specified
+		if hostnameProvided {
+			if flagCred {
+				loginMethod = LoginMethodCredentials
+			} else {
+				loginMethod = LoginMethodWeb
+			}
+		} else if flagCred {
+			// If no hostname but --cred is set, use credentials (will prompt for hostname)
+			loginMethod = LoginMethodCredentials
+		}
+
+		// If hostname was provided, skip hosting option selection
+		if hostname == "" {
+			// First question: select hosting option
+			form := huh.NewForm(
 				huh.NewGroup(
-					huh.NewInput().
-						Title("Enter hostname URL").
-						Placeholder("https://your-instance.example.com").
-						Value(&hostname),
+					huh.NewSelect[HostingOption]().
+						Title("Select your hosting option").
+						Options(
+							huh.NewOption("Pangolin Cloud (app.pangolin.net)", HostingOptionCloud),
+							huh.NewOption("Self-hosted or Dedicated instance", HostingOptionSelfHosted),
+						).
+						Value(&hostingOption),
 				),
 			)
 
-			if err := hostnameForm.Run(); err != nil {
+			if err := form.Run(); err != nil {
 				utils.Error("Error: %v", err)
 				return
 			}
-		} else {
-			// For cloud, set the default hostname
-			hostname = "app.pangolin.net"
+
+			// If self-hosted, prompt for hostname
+			if hostingOption == HostingOptionSelfHosted {
+				hostnameForm := huh.NewForm(
+					huh.NewGroup(
+						huh.NewInput().
+							Title("Enter hostname URL").
+							Placeholder("https://your-instance.example.com").
+							Value(&hostname),
+					),
+				)
+
+				if err := hostnameForm.Run(); err != nil {
+					utils.Error("Error: %v", err)
+					return
+				}
+			} else {
+				// For cloud, set the default hostname
+				hostname = "app.pangolin.net"
+			}
 		}
 
 		// Normalize hostname (preserve protocol, remove trailing slash)
@@ -357,22 +383,24 @@ var LoginCmd = &cobra.Command{
 			}
 		}
 
-		// Select login method
-		loginMethodForm := huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[LoginMethod]().
-					Title("Select login method").
-					Options(
-						huh.NewOption("Login with web (recommended)", LoginMethodWeb),
-						huh.NewOption("Login with credentials", LoginMethodCredentials),
-					).
-					Value(&loginMethod),
-			),
-		)
+		// Select login method if not already set by flags
+		if loginMethod == "" {
+			loginMethodForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewSelect[LoginMethod]().
+						Title("Select login method").
+						Options(
+							huh.NewOption("Login with web (recommended)", LoginMethodWeb),
+							huh.NewOption("Login with credentials", LoginMethodCredentials),
+						).
+						Value(&loginMethod),
+				),
+			)
 
-		if err := loginMethodForm.Run(); err != nil {
-			utils.Error("Error: %v", err)
-			return
+			if err := loginMethodForm.Run(); err != nil {
+				utils.Error("Error: %v", err)
+				return
+			}
 		}
 
 		// Branch based on login method
@@ -429,7 +457,7 @@ var LoginCmd = &cobra.Command{
 			if err != nil {
 				// Not found in keyring, create new OLM
 				deviceName := getDeviceName()
-				defaultOlmName := fmt.Sprintf("%s", deviceName)
+				defaultOlmName := deviceName
 
 				// Prompt user to edit the name with pre-filled default
 				olmName := defaultOlmName
@@ -483,4 +511,8 @@ var LoginCmd = &cobra.Command{
 			}
 		}
 	},
+}
+
+func init() {
+	LoginCmd.Flags().BoolVar(&flagCred, "cred", false, "Login using credentials (email/password) instead of web authentication")
 }
