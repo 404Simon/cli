@@ -19,44 +19,53 @@ var LogoutCmd = &cobra.Command{
 		// Check if client is running before logout
 		olmClient := olm.NewClient("")
 		if olmClient.IsRunning() {
-			// Prompt user to confirm they want to disconnect the client
-			var confirm bool
-			confirmForm := huh.NewForm(
-				huh.NewGroup(
-					huh.NewConfirm().
-						Title("A client is currently running. Logging out will disconnect it.").
-						Description("Do you want to continue?").
-						Value(&confirm),
-				),
-			)
-
-			if err := confirmForm.Run(); err != nil {
-				utils.Error("Error: %v", err)
-				return
-			}
-
-			if !confirm {
-				utils.Info("Logout cancelled")
-				return
-			}
-
-			// Kill the client without showing TUI
-			_, err := olmClient.Exit()
+			// Check that the client was started by this CLI by verifying the version
+			status, err := olmClient.GetStatus()
 			if err != nil {
-				utils.Warning("Failed to send exit signal to client: %v", err)
-			} else {
-				// Wait for client to stop (poll until socket is gone)
-				maxWait := 10 * time.Second
-				pollInterval := 200 * time.Millisecond
-				elapsed := time.Duration(0)
-				for olmClient.IsRunning() && elapsed < maxWait {
-					time.Sleep(pollInterval)
-					elapsed += pollInterval
+				utils.Warning("Failed to get client status: %v", err)
+				// Continue with logout even if we can't check version
+			} else if status.Version == olm.PangolinCLIVersion {
+				// Only prompt and stop if client was started by this CLI
+				// Prompt user to confirm they want to disconnect the client
+				var confirm bool
+				confirmForm := huh.NewForm(
+					huh.NewGroup(
+						huh.NewConfirm().
+							Title("A client is currently running. Logging out will disconnect it.").
+							Description("Do you want to continue?").
+							Value(&confirm),
+					),
+				)
+
+				if err := confirmForm.Run(); err != nil {
+					utils.Error("Error: %v", err)
+					return
 				}
-				if olmClient.IsRunning() {
-					utils.Warning("Client did not stop within timeout")
+
+				if !confirm {
+					utils.Info("Logout cancelled")
+					return
+				}
+
+				// Kill the client without showing TUI
+				_, err := olmClient.Exit()
+				if err != nil {
+					utils.Warning("Failed to send exit signal to client: %v", err)
+				} else {
+					// Wait for client to stop (poll until socket is gone)
+					maxWait := 10 * time.Second
+					pollInterval := 200 * time.Millisecond
+					elapsed := time.Duration(0)
+					for olmClient.IsRunning() && elapsed < maxWait {
+						time.Sleep(pollInterval)
+						elapsed += pollInterval
+					}
+					if olmClient.IsRunning() {
+						utils.Warning("Client did not stop within timeout")
+					}
 				}
 			}
+			// If version doesn't match, skip client shutdown and continue with logout
 		}
 
 		// Check if there's an active session in the key store

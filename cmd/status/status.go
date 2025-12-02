@@ -19,4 +19,3 @@ var StatusCmd = &cobra.Command{
 func init() {
 	StatusCmd.AddCommand(client.ClientCmd)
 }
-

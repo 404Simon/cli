@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -8,6 +9,10 @@ import (
 	"github.com/fosrl/cli/internal/olm"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
+)
+
+var (
+	flagJSON bool
 )
 
 var ClientCmd = &cobra.Command{
@@ -31,18 +36,37 @@ var ClientCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Print status table
-		printStatusTable(status)
+		// Print raw JSON if flag is set, otherwise print formatted table
+		if flagJSON {
+			printJSON(status)
+		} else {
+			printStatusTable(status)
+		}
 	},
+}
+
+func init() {
+	ClientCmd.Flags().BoolVar(&flagJSON, "json", false, "Print raw JSON response")
+}
+
+// printJSON prints the status response as JSON
+func printJSON(status *olm.StatusResponse) {
+	jsonData, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		utils.Error("Error marshaling JSON: %v", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(jsonData))
 }
 
 // printStatusTable prints the status information in a table format
 func printStatusTable(status *olm.StatusResponse) {
 	// Print connection status
-	headers := []string{"CONNECTED", "REGISTERED", "ORG ID"}
+	headers := []string{"VERSION", "STATUS", "REGISTERED", "ORG ID"}
 	rows := [][]string{
 		{
-			fmt.Sprintf("%t", status.Connected),
+			status.Version,
+			formatStatus(status.Connected),
 			fmt.Sprintf("%t", status.Registered),
 			status.OrgID,
 		},
@@ -52,18 +76,16 @@ func printStatusTable(status *olm.StatusResponse) {
 	// Print peers if there are any
 	if len(status.PeerStatuses) > 0 {
 		fmt.Println("")
-		peerHeaders := []string{"SITE ID", "ENDPOINT", "STATUS", "RTT", "LAST SEEN", "RELAY"}
+		peerHeaders := []string{"SITE ID", "ENDPOINT", "STATUS", "LAST SEEN", "RELAY"}
 		peerRows := [][]string{}
 
 		for _, peer := range status.PeerStatuses {
-			rtt := formatRTT(int64(peer.RTT))
 			lastSeen := formatLastSeen(peer.LastSeen.Format(time.RFC3339))
 
 			peerRows = append(peerRows, []string{
 				fmt.Sprintf("%d", peer.SiteID),
 				peer.Endpoint,
-				formatStatus("", peer.Connected),
-				rtt,
+				formatStatus(peer.Connected),
 				lastSeen,
 				fmt.Sprintf("%t", peer.IsRelay),
 			})
@@ -76,12 +98,9 @@ func printStatusTable(status *olm.StatusResponse) {
 }
 
 // formatStatus formats the connection status
-func formatStatus(status string, connected bool) string {
+func formatStatus(connected bool) string {
 	if connected {
 		return "Connected"
-	}
-	if status != "" {
-		return fmt.Sprintf("✗ %s", status)
 	}
 	return "Disconnected"
 }

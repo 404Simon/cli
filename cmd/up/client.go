@@ -24,6 +24,20 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	defaultMTU           = 1280
+	defaultDNS           = "8.8.8.8"
+	defaultInterfaceName = "Pangolin"
+	defaultLogLevel      = "info"
+	defaultEnableAPI     = true
+	defaultSocketPath    = "/var/run/olm.sock"
+	defaultPingInterval  = "5s"
+	defaultPingTimeout   = "5s"
+	defaultHolepunch     = false
+	defaultVersion       = "Pangolin CLI"
+	defaultOverrideDNS   = true
+)
+
 var (
 	flagID            string
 	flagSecret        string
@@ -43,6 +57,9 @@ var (
 	flagAttached      bool
 	flagLogFile       string
 	flagUserToken     string
+	flagSkipUserToken bool
+	flagOverrideDNS   bool
+	flagUpstreamDNS   []string
 )
 
 var ClientCmd = &cobra.Command{
@@ -50,6 +67,12 @@ var ClientCmd = &cobra.Command{
 	Short: "Start a client connection",
 	Long:  "Bring up a client tunneled connection",
 	Run: func(cmd *cobra.Command, args []string) {
+
+		if runtime.GOOS == "windows" {
+			utils.Error("Windows is not supported for detached mode")
+			os.Exit(1)
+		}
+
 		// Check if a client is already running
 		olmClient := olm.NewClient("")
 		if olmClient.IsRunning() {
@@ -61,13 +84,6 @@ var ClientCmd = &cobra.Command{
 			}
 			// If status check fails but socket exists, still warn
 			utils.Error("A client appears to be running (socket exists)")
-			os.Exit(1)
-		}
-
-		// Get orgId from viper (required for OLM config)
-		orgID := viper.GetString("orgId")
-		if orgID == "" {
-			utils.Error("OrgId is required. Please select an organization first")
 			os.Exit(1)
 		}
 
@@ -148,10 +164,17 @@ var ClientCmd = &cobra.Command{
 			}
 		}
 
+		// Get orgId from viper (required for OLM config)
+		orgID := viper.GetString("orgId")
+		if orgID == "" {
+			utils.Error("OrgId is required. Please select an organization first")
+			os.Exit(1)
+		}
+
 		// Get UserToken if credentials came from keyring (must happen in parent process)
 		// This cannot happen in the subprocess because it runs as root and can't access user's keyring
 		var userToken string
-		if credentialsFromKeyring {
+		if credentialsFromKeyring && !flagSkipUserToken {
 			token, err := api.GetSessionToken()
 			if err != nil {
 				utils.Warning("Failed to get session token: %v", err)
@@ -201,6 +224,11 @@ var ClientCmd = &cobra.Command{
 			if userToken != "" {
 				cmdArgs = append(cmdArgs, "--user-token", userToken)
 			}
+			if cmd.Flags().Changed("skip-user-token") {
+				if flagSkipUserToken {
+					cmdArgs = append(cmdArgs, "--skip-user-token")
+				}
+			}
 
 			// Optional flags - only include if they were explicitly set
 			if cmd.Flags().Changed("mtu") {
@@ -219,8 +247,6 @@ var ClientCmd = &cobra.Command{
 				if flagEnableAPI {
 					cmdArgs = append(cmdArgs, "--enable-api")
 				}
-				// Note: If enable-api is set to false, we can't pass --no-enable-api
-				// The subprocess will use its default (true) if not specified
 			}
 			if cmd.Flags().Changed("http-addr") {
 				cmdArgs = append(cmdArgs, "--http-addr", flagHTTPAddr)
@@ -244,6 +270,18 @@ var ClientCmd = &cobra.Command{
 			}
 			if cmd.Flags().Changed("version") {
 				cmdArgs = append(cmdArgs, "--version", flagVersion)
+			}
+			if cmd.Flags().Changed("override-dns") {
+				if flagOverrideDNS {
+					cmdArgs = append(cmdArgs, "--override-dns")
+				}
+			}
+			if cmd.Flags().Changed("upstream-dns") {
+				// For string slice flags, we need to pass each value separately
+				// Cobra's StringSliceVar supports multiple --upstream-dns flags or comma-separated values
+				for _, dns := range flagUpstreamDNS {
+					cmdArgs = append(cmdArgs, "--upstream-dns", dns)
+				}
 			}
 			// Always add log-file when detached (use default if not explicitly set)
 			cmdArgs = append(cmdArgs, "--log-file", logFile)
@@ -273,11 +311,8 @@ var ClientCmd = &cobra.Command{
 				procCmd.Stdout = nil
 				procCmd.Stderr = os.Stderr
 			} else {
-				// Windows - use executable directly (may need different elevation mechanism)
-				procCmd = exec.Command(executable, cmdArgs...)
-				procCmd.Stdin = nil
-				procCmd.Stdout = nil
-				procCmd.Stderr = nil
+				utils.Error("Windows is not supported for detached mode")
+				os.Exit(1)
 			}
 
 			// Start the process
@@ -335,16 +370,11 @@ var ClientCmd = &cobra.Command{
 			os.Exit(0)
 		}
 
-		// Helper function to get value with precedence: CLI flag > config > default
+		// Helper function to get value with precedence: CLI flag > default
 		getString := func(flagValue, flagName, configKey, defaultValue string) string {
 			// Check if flag was explicitly set (CLI takes precedence)
 			if cmd.Flags().Changed(flagName) {
 				return flagValue
-			}
-			// Check config file (if key exists)
-			configPath := "olm_defaults." + configKey
-			if viper.IsSet(configPath) {
-				return viper.GetString(configPath)
 			}
 			return defaultValue
 		}
@@ -354,11 +384,6 @@ var ClientCmd = &cobra.Command{
 			if cmd.Flags().Changed(flagName) {
 				return flagValue
 			}
-			// Check config file (if key exists)
-			configPath := "olm_defaults." + configKey
-			if viper.IsSet(configPath) {
-				return viper.GetInt(configPath)
-			}
 			return defaultValue
 		}
 
@@ -367,10 +392,13 @@ var ClientCmd = &cobra.Command{
 			if cmd.Flags().Changed(flagName) {
 				return flagValue
 			}
-			// Check config file (if key exists)
-			configPath := "olm_defaults." + configKey
-			if viper.IsSet(configPath) {
-				return viper.GetBool(configPath)
+			return defaultValue
+		}
+
+		getStringSlice := func(flagValue []string, flagName, configKey string, defaultValue []string) []string {
+			// Check if flag was explicitly set (CLI takes precedence)
+			if cmd.Flags().Changed(flagName) {
+				return flagValue
 			}
 			return defaultValue
 		}
@@ -388,29 +416,51 @@ var ClientCmd = &cobra.Command{
 			return d
 		}
 
-		// Get endpoint from hostname (not from olm_defaults)
+		// Get endpoint from hostname
 		endpoint := flagEndpoint
 		if endpoint == "" {
 			endpoint = viper.GetString("hostname")
 		}
 
 		// Get values with precedence: CLI flag > config > default
-		mtu := getInt(flagMTU, "mtu", "mtu", 1280)
-		dns := getString(flagDNS, "dns", "dns", "8.8.8.8")
-		interfaceName := getString(flagInterfaceName, "interface-name", "interface_name", "olm")
-		logLevel := getString(flagLogLevel, "log-level", "log_level", "info")
-		enableAPI := getBool(flagEnableAPI, "enable-api", "enable_api", true)
+		mtu := getInt(flagMTU, "mtu", "mtu", defaultMTU)
+		dns := getString(flagDNS, "dns", "dns", defaultDNS)
+		interfaceName := getString(flagInterfaceName, "interface-name", "interface_name", defaultInterfaceName)
+		logLevel := getString(flagLogLevel, "log-level", "log_level", defaultLogLevel)
+		enableAPI := getBool(flagEnableAPI, "enable-api", "enable_api", defaultEnableAPI)
 		httpAddr := getString(flagHTTPAddr, "http-addr", "http_addr", "")
-		socketPath := getString(flagSocketPath, "socket-path", "socket_path", "/var/run/olm.sock")
-		pingInterval := getString(flagPingInterval, "ping-interval", "ping_interval", "5s")
-		pingTimeout := getString(flagPingTimeout, "ping-timeout", "ping_timeout", "5s")
-		holepunch := getBool(flagHolepunch, "holepunch", "holepunch", false)
+		socketPath := getString(flagSocketPath, "socket-path", "socket_path", defaultSocketPath)
+		pingInterval := getString(flagPingInterval, "ping-interval", "ping_interval", defaultPingInterval)
+		pingTimeout := getString(flagPingTimeout, "ping-timeout", "ping_timeout", defaultPingTimeout)
+		holepunch := getBool(flagHolepunch, "holepunch", "holepunch", defaultHolepunch)
 		tlsClientCert := getString(flagTlsClientCert, "tls-client-cert", "tls_client_cert", "")
-		version := getString(flagVersion, "version", "version", "1")
+		version := getString(flagVersion, "version", "version", defaultVersion)
+		overrideDNS := getBool(flagOverrideDNS, "override-dns", "override_dns", defaultOverrideDNS)
+		upstreamDNS := getStringSlice(flagUpstreamDNS, "upstream-dns", "upstream_dns", []string{defaultDNS})
+
+		// Process UpstreamDNS: append :53 to each DNS server if not already present
+		processedUpstreamDNS := make([]string, 0, len(upstreamDNS))
+		for _, dns := range upstreamDNS {
+			dns = strings.TrimSpace(dns)
+			if dns == "" {
+				continue
+			}
+			// Append :53 if not already present
+			if !strings.Contains(dns, ":") {
+				dns = dns + ":53"
+			}
+			processedUpstreamDNS = append(processedUpstreamDNS, dns)
+		}
+		// If no DNS servers were provided, use default
+		if len(processedUpstreamDNS) == 0 {
+			processedUpstreamDNS = []string{defaultDNS + ":53"}
+		}
 
 		// Parse durations
-		pingIntervalDuration := parseDuration(pingInterval, 5*time.Second)
-		pingTimeoutDuration := parseDuration(pingTimeout, 5*time.Second)
+		defaultPingIntervalDuration, _ := time.ParseDuration(defaultPingInterval)
+		defaultPingTimeoutDuration, _ := time.ParseDuration(defaultPingTimeout)
+		pingIntervalDuration := parseDuration(pingInterval, defaultPingIntervalDuration)
+		pingTimeoutDuration := parseDuration(pingTimeout, defaultPingTimeoutDuration)
 
 		// Setup log file if specified
 		if logFile != "" {
@@ -425,7 +475,7 @@ var ClientCmd = &cobra.Command{
 		if flagUserToken != "" {
 			// UserToken was passed from parent process (detached mode)
 			userToken = flagUserToken
-		} else if credentialsFromKeyring {
+		} else if credentialsFromKeyring && !flagSkipUserToken {
 			// In attached mode, fetch from keyring (if not already set in parent process)
 			if userToken == "" {
 				token, err := api.GetSessionToken()
@@ -437,7 +487,16 @@ var ClientCmd = &cobra.Command{
 			}
 		}
 
-		olmConfig := olmpkg.Config{
+		// Create OLM GlobalConfig with hardcoded values from Swift
+		olmInitConfig := olmpkg.GlobalConfig{
+			LogLevel:   logLevel,
+			EnableAPI:  true,
+			SocketPath: socketPath,
+			HTTPAddr:   httpAddr,
+			Version:    version,
+		}
+
+		olmConfig := olmpkg.TunnelConfig{
 			Endpoint:             endpoint,
 			ID:                   olmID,
 			Secret:               olmSecret,
@@ -445,15 +504,12 @@ var ClientCmd = &cobra.Command{
 			MTU:                  mtu,
 			DNS:                  dns,
 			InterfaceName:        interfaceName,
-			LogLevel:             logLevel,
-			EnableAPI:            enableAPI,
-			HTTPAddr:             httpAddr,
-			SocketPath:           socketPath,
 			Holepunch:            holepunch,
 			TlsClientCert:        tlsClientCert,
 			PingIntervalDuration: pingIntervalDuration,
 			PingTimeoutDuration:  pingTimeoutDuration,
-			Version:              version,
+			OverrideDNS:          overrideDNS,
+			UpstreamDNS:          processedUpstreamDNS,
 		}
 
 		// Add UserToken if we have it (from flag or keyring)
@@ -474,7 +530,11 @@ var ClientCmd = &cobra.Command{
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		olmpkg.Run(ctx, olmConfig)
+		olmpkg.Init(ctx, olmInitConfig)
+		if enableAPI {
+			olmpkg.StartApi()
+		}
+		olmpkg.StartTunnel(olmConfig)
 	},
 }
 
@@ -494,21 +554,24 @@ func init() {
 
 	// Optional flags
 	ClientCmd.Flags().StringVar(&flagEndpoint, "endpoint", "", "Client endpoint (defaults to hostname from config)")
-	ClientCmd.Flags().IntVar(&flagMTU, "mtu", 0, "MTU (default: 1280)")
-	ClientCmd.Flags().StringVar(&flagDNS, "dns", "", "DNS server (default: 8.8.8.8)")
-	ClientCmd.Flags().StringVar(&flagInterfaceName, "interface-name", "", "Interface name (default: olm)")
-	ClientCmd.Flags().StringVar(&flagLogLevel, "log-level", "", "Log level (default: info)")
-	ClientCmd.Flags().BoolVar(&flagEnableAPI, "enable-api", false, "Enable API (default: true)")
+	ClientCmd.Flags().IntVar(&flagMTU, "mtu", 0, fmt.Sprintf("MTU (default: %d)", defaultMTU))
+	ClientCmd.Flags().StringVar(&flagDNS, "dns", "", fmt.Sprintf("DNS server (default: %s)", defaultDNS))
+	ClientCmd.Flags().StringVar(&flagInterfaceName, "interface-name", "", fmt.Sprintf("Interface name (default: %s)", defaultInterfaceName))
+	ClientCmd.Flags().StringVar(&flagLogLevel, "log-level", "", fmt.Sprintf("Log level (default: %s)", defaultLogLevel))
+	ClientCmd.Flags().BoolVar(&flagEnableAPI, "enable-api", false, fmt.Sprintf("Enable API (default: %v)", defaultEnableAPI))
 	ClientCmd.Flags().StringVar(&flagHTTPAddr, "http-addr", "", "HTTP address")
-	ClientCmd.Flags().StringVar(&flagSocketPath, "socket-path", "", "Socket path (default: /var/run/olm.sock)")
-	ClientCmd.Flags().StringVar(&flagPingInterval, "ping-interval", "", "Ping interval (default: 5s)")
-	ClientCmd.Flags().StringVar(&flagPingTimeout, "ping-timeout", "", "Ping timeout (default: 5s)")
-	ClientCmd.Flags().BoolVar(&flagHolepunch, "holepunch", false, "Enable holepunching (default: false)")
+	ClientCmd.Flags().StringVar(&flagSocketPath, "socket-path", "", fmt.Sprintf("Socket path (default: %s)", defaultSocketPath))
+	ClientCmd.Flags().StringVar(&flagPingInterval, "ping-interval", "", fmt.Sprintf("Ping interval (default: %s)", defaultPingInterval))
+	ClientCmd.Flags().StringVar(&flagPingTimeout, "ping-timeout", "", fmt.Sprintf("Ping timeout (default: %s)", defaultPingTimeout))
+	ClientCmd.Flags().BoolVar(&flagHolepunch, "holepunch", false, fmt.Sprintf("Enable holepunching (default: %v)", defaultHolepunch))
 	ClientCmd.Flags().StringVar(&flagTlsClientCert, "tls-client-cert", "", "TLS client certificate path")
-	ClientCmd.Flags().StringVar(&flagVersion, "version", "", "Version (default: 1)")
+	ClientCmd.Flags().StringVar(&flagVersion, "version", "", fmt.Sprintf("Version (default: %s)", defaultVersion))
+	ClientCmd.Flags().BoolVar(&flagOverrideDNS, "override-dns", defaultOverrideDNS, fmt.Sprintf("Override system DNS for resolving internal resource alias (default: %v)", defaultOverrideDNS))
+	ClientCmd.Flags().StringSliceVar(&flagUpstreamDNS, "upstream-dns", nil, fmt.Sprintf("List of DNS servers to use for external DNS resolution if overriding system DNS (default: %s)", defaultDNS))
 	ClientCmd.Flags().BoolVar(&flagAttached, "attach", false, "Run in attached mode (foreground, default is detached)")
 	ClientCmd.Flags().StringVar(&flagLogFile, "log-file", "", "Path to log file (defaults to standard log location when detached)")
-	ClientCmd.Flags().StringVar(&flagUserToken, "user-token", "", "User session token (internal use, passed from parent process)")
+	ClientCmd.Flags().StringVar(&flagUserToken, "user-token", "", "User session token (if not provided, will be retrieved from keyring)")
+	ClientCmd.Flags().BoolVar(&flagSkipUserToken, "skip-user-token", false, "Skip user token retrieval from keyring (run without user token)")
 
 	UpCmd.AddCommand(ClientCmd)
 }

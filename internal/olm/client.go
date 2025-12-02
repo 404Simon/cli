@@ -10,12 +10,12 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
 const (
 	defaultSocketPath = "/var/run/olm.sock"
+	// PangolinCLIVersion is the version string used to identify clients started by the Pangolin CLI
+	PangolinCLIVersion = "Pangolin CLI"
 )
 
 // Client handles communication with the OLM process via Unix socket
@@ -81,11 +81,7 @@ func NewClient(socketPath string) *Client {
 }
 
 // getDefaultSocketPath returns the default socket path
-// Checks config first, then falls back to default
 func getDefaultSocketPath() string {
-	if socketPath := viper.GetString("olm_defaults.socket_path"); socketPath != "" {
-		return socketPath
-	}
 	return defaultSocketPath
 }
 
@@ -180,7 +176,20 @@ func (c *Client) SwitchOrg(orgID string) (*SwitchOrgResponse, error) {
 }
 
 // IsRunning checks if the OLM process is running by checking if the socket exists
+// and making a health check request to verify the service is responding
 func (c *Client) IsRunning() bool {
+	// First check if socket exists
 	_, err := os.Stat(c.socketPath)
-	return err == nil
+	if err != nil {
+		return false
+	}
+
+	// Then verify the service is actually responding by pinging /health
+	resp, err := c.doRequest("GET", "/health", nil, nil)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return true
 }

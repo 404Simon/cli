@@ -81,12 +81,14 @@ func loginWithWeb(hostname string) (string, error) {
 	// Calculate expiry time from relative seconds
 	expiresAt := time.Now().Add(time.Duration(startResp.ExpiresInSeconds) * time.Second)
 
-	// Build the login URL with code as query parameter
-	loginURL := fmt.Sprintf("%s/auth/login/device?code=%s", strings.TrimSuffix(hostname, "/"), code)
+	// Build the base login URL (without query parameter) for display
+	baseLoginURL := fmt.Sprintf("%s/auth/login/device", strings.TrimSuffix(hostname, "/"))
+	// Build the login URL with code as query parameter for browser
+	loginURL := fmt.Sprintf("%s?code=%s", baseLoginURL, code)
 
 	// Display code and instructions (similar to GH CLI format)
 	utils.Info("First copy your one-time code: %s", code)
-	utils.Info("Press Enter to open %s in your browser...", loginURL)
+	utils.Info("Press Enter to open %s in your browser...", baseLoginURL)
 
 	// Wait for user to press Enter
 	reader := bufio.NewReader(os.Stdin)
@@ -99,7 +101,7 @@ func loginWithWeb(hostname string) (string, error) {
 	if err := openBrowser(loginURL); err != nil {
 		// Don't fail if browser can't be opened, just warn
 		utils.Warning("Failed to open browser automatically: %v", err)
-		utils.Info("Please manually visit: %s", loginURL)
+		utils.Info("Please manually visit: %s", baseLoginURL)
 	}
 
 	// Poll for verification
@@ -244,7 +246,8 @@ var LoginCmd = &cobra.Command{
 		// Ensure config type is set and file path is correct
 		if viper.ConfigFileUsed() == "" {
 			// Config file doesn't exist yet, set the full path
-			homeDir, err := os.UserHomeDir()
+			// Use original user's home directory (works with and without sudo)
+			homeDir, err := utils.GetOriginalUserHomeDir()
 			if err == nil {
 				viper.SetConfigFile(homeDir + "/.pangolin.yaml")
 				viper.SetConfigType("yaml")

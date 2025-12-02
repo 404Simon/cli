@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"strings"
 
 	"github.com/fosrl/cli/cmd/auth"
 	"github.com/fosrl/cli/cmd/auth/login"
@@ -61,7 +62,15 @@ func initConfig() {
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {
-		viper.AddConfigPath("$HOME")
+		// Get original user's home directory (works with and without sudo)
+		homeDir, err := utils.GetOriginalUserHomeDir()
+		if err != nil {
+			// Fallback to $HOME if we can't determine original user
+			viper.AddConfigPath("$HOME")
+		} else {
+			// Use original user's home directory for config
+			viper.AddConfigPath(homeDir)
+		}
 		viper.SetConfigName(".pangolin")
 		viper.SetConfigType("yaml")
 	}
@@ -70,8 +79,14 @@ func initConfig() {
 	// Initialize logger (must be done before any logging)
 	utils.InitLogger()
 
+	// Try to read config file - it's okay if it doesn't exist yet (user hasn't logged in)
 	if err := viper.ReadInConfig(); err != nil {
-		utils.Warning("Failed to read config file: %v", err)
+		// Only warn if it's not a "file not found" error (which is expected for new users)
+		// Check if error message contains "Not Found" - this is viper's way of saying the file doesn't exist
+		if !strings.Contains(err.Error(), "Not Found") {
+			utils.Warning("Failed to read config file: %v", err)
+		}
+		// Silently continue if config file doesn't exist - this is normal for new users
 	}
 
 	// Initialize API client (always succeeds - may be unauthenticated)

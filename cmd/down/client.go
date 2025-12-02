@@ -26,6 +26,18 @@ var ClientCmd = &cobra.Command{
 		// Get log file path (same as up client)
 		logFile := utils.GetDefaultLogPath()
 
+		// Check that the client was started by this CLI by verifying the version
+		status, err := client.GetStatus()
+		if err != nil {
+			utils.Error("Failed to get client status: %v", err)
+			os.Exit(1)
+		}
+		if status.Version != olm.PangolinCLIVersion {
+			utils.Error("Client was not started by Pangolin CLI (version: %s)", status.Version)
+			utils.Info("Only clients started by this CLI can be stopped using this command")
+			os.Exit(1)
+		}
+
 		// Send exit signal
 		exitResp, err := client.Exit()
 		if err != nil {

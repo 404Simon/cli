@@ -4,6 +4,8 @@ BINARY_NAME=pangolin
 OUTPUT_DIR=bin
 LDFLAGS=-ldflags="-s -w"
 
+all: clean build
+
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(OUTPUT_DIR)
