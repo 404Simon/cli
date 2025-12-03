@@ -46,7 +46,6 @@ var ClientCmd = &cobra.Command{
 }
 
 // addStatusClientFlags adds all status client flags to the given command
-// This is the single source of truth for status client flag definitions
 func addStatusClientFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&flagJSON, "json", false, "Print raw JSON response")
 }
@@ -109,23 +108,6 @@ func formatStatus(connected bool) string {
 		return "Connected"
 	}
 	return "Disconnected"
-}
-
-// formatRTT formats the round-trip time in nanoseconds to a human-readable format
-func formatRTT(rttNs int64) string {
-	if rttNs == 0 {
-		return "-"
-	}
-
-	// Convert nanoseconds to milliseconds
-	rttMs := float64(rttNs) / float64(time.Millisecond)
-	if rttMs < 1 {
-		return fmt.Sprintf("%.2fμs", float64(rttNs)/float64(time.Microsecond))
-	}
-	if rttMs < 1000 {
-		return fmt.Sprintf("%.2fms", rttMs)
-	}
-	return fmt.Sprintf("%.2fs", float64(rttNs)/float64(time.Second))
 }
 
 // formatLastSeen formats the last seen timestamp

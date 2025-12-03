@@ -1,4 +1,4 @@
-.PHONY: build clean install help docs docs-hugo docs-custom
+.PHONY: build clean install docs
 
 BINARY_NAME=pangolin
 OUTPUT_DIR=bin
@@ -25,16 +25,3 @@ docs:
 	@echo "Generating markdown documentation..."
 	@go run tools/gendocs/main.go -dir docs
 	@echo "Documentation generated in docs/"
-
-docs-hugo:
-	@echo "Generating markdown documentation with Hugo front matter..."
-	@go run tools/gendocs/main.go -dir docs -frontmatter -baseurl /commands
-	@echo "Documentation generated in docs/"
-
-docs-custom:
-	@echo "Generating markdown documentation with custom output directory..."
-	@if [ -z "$(DIR)" ]; then \
-		echo "Usage: make docs-custom DIR=/path/to/output"; \
-		exit 1; \
-	fi
-	@go run tools/gendocs/main.go -dir $(DIR)

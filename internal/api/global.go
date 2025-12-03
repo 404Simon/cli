@@ -11,7 +11,6 @@ import (
 var GlobalClient *Client
 
 // InitGlobalClient initializes the global API client with stored credentials.
-// This function always succeeds in creating a client, even if no token is available.
 // The client will be created without authentication if no token is found.
 func InitGlobalClient() error {
 	// Get hostname from viper config

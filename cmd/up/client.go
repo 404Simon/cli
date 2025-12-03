@@ -73,18 +73,10 @@ var ClientCmd = &cobra.Command{
 		// Check if a client is already running
 		olmClient := olm.NewClient("")
 		if olmClient.IsRunning() {
-			// Try to get status to confirm it's actually running
-			status, err := olmClient.GetStatus()
-			if err == nil && status != nil {
-				utils.Info("A client is already running")
-				os.Exit(1)
-			}
-			// If status check fails but socket exists, still warn
-			utils.Error("A client appears to be running (socket exists)")
+			utils.Info("A client is already running")
 			os.Exit(1)
 		}
 
-		// Get OLM credentials: from flags, or from keyring (requires logged-in user)
 		var olmID, olmSecret string
 		var credentialsFromKeyring bool
 		var userID string
@@ -317,11 +309,11 @@ var ClientCmd = &cobra.Command{
 				},
 				StatusFormatter: func(isRunning bool, status *olm.StatusResponse) string {
 					if !isRunning || status == nil {
-						return fmt.Sprintf("Starting")
+						return "Starting"
 					} else if status.Registered {
-						return fmt.Sprintf("Registered")
+						return "Registered"
 					}
-					return fmt.Sprintf("Starting")
+					return "Starting"
 				},
 			})
 			if err != nil {
@@ -454,7 +446,6 @@ var ClientCmd = &cobra.Command{
 		credentialsFromKeyringEnv := os.Getenv("PANGOLIN_CREDENTIALS_FROM_KEYRING")
 		if credentialsFromKeyringEnv == "1" || credentialsFromKeyring {
 			// Credentials came from keyring, fetch userToken from secrets
-			// (secrets now work in sudo, so subprocess can fetch directly)
 			token, err := secrets.GetSessionToken()
 			if err != nil {
 				utils.Warning("Failed to get session token: %v", err)
@@ -531,7 +522,6 @@ var ClientCmd = &cobra.Command{
 }
 
 // addClientFlags adds all client flags to the given command
-// This is the single source of truth for client flag definitions
 func addClientFlags(cmd *cobra.Command) {
 	// Optional flags - if not provided, will use keyring or create new OLM
 	cmd.Flags().StringVar(&flagID, "id", "", "Client ID (optional, will use user info if not provided)")

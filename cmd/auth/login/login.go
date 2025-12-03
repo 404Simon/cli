@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -13,6 +11,7 @@ import (
 	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/secrets"
 	"github.com/fosrl/cli/internal/utils"
+	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -23,22 +22,6 @@ const (
 	HostingOptionCloud      HostingOption = "cloud"
 	HostingOptionSelfHosted HostingOption = "self-hosted"
 )
-
-// openBrowser opens the specified URL in the default browser
-func openBrowser(url string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
-	return cmd.Run()
-}
 
 // getDeviceName returns a human-readable device name
 func getDeviceName() string {
@@ -99,7 +82,7 @@ func loginWithWeb(hostname string) (string, error) {
 	}
 
 	// Open browser
-	if err := openBrowser(loginURL); err != nil {
+	if err := browser.OpenURL(loginURL); err != nil {
 		// Don't fail if browser can't be opened, just warn
 		utils.Warning("Failed to open browser automatically: %v", err)
 		utils.Info("Please manually visit: %s", baseLoginURL)
