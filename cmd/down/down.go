@@ -6,8 +6,8 @@ import (
 
 var DownCmd = &cobra.Command{
 	Use:   "down",
-	Short: "Stop a client or site",
-	Long:  "Stop a client or site tunneled connection",
+	Short: "Stop a client",
+	Long:  "Stop a client connection",
 	Run: func(cmd *cobra.Command, args []string) {
 		// Default to client subcommand if no subcommand is provided
 		// This makes "pangolin down" equivalent to "pangolin down client"
