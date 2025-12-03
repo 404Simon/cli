@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/olm"
+	"github.com/fosrl/cli/internal/secrets"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -69,7 +70,7 @@ var LogoutCmd = &cobra.Command{
 		}
 
 		// Check if there's an active session in the key store
-		_, err := api.GetSessionToken()
+		_, err := secrets.GetSessionToken()
 		if err != nil {
 			// No session found - user is already logged out
 			utils.Success("Already logged out!")
@@ -81,8 +82,8 @@ var LogoutCmd = &cobra.Command{
 		if accountName == "" {
 			// Try to get username from API as fallback
 			if user, err := api.GlobalClient.GetUser(); err == nil {
-				if user.Username != "" {
-					accountName = user.Username
+				if user.Username != nil && *user.Username != "" {
+					accountName = *user.Username
 				} else if user.Email != "" {
 					accountName = user.Email
 				}
@@ -96,7 +97,7 @@ var LogoutCmd = &cobra.Command{
 		}
 
 		// Clear session token from keyring
-		if err := api.DeleteSessionToken(); err != nil {
+		if err := secrets.DeleteSessionToken(); err != nil {
 			// Ignore error if token doesn't exist (already logged out)
 			utils.Error("Failed to delete session token: %v", err)
 			return

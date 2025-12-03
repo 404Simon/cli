@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/secrets"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -275,7 +276,7 @@ var LoginCmd = &cobra.Command{
 		}
 
 		// Save session token to keyring
-		if err := api.SaveSessionToken(sessionToken); err != nil {
+		if err := secrets.SaveSessionToken(sessionToken); err != nil {
 			utils.Error("Failed to save session token: %v", err)
 			return
 		}
@@ -302,45 +303,10 @@ var LoginCmd = &cobra.Command{
 				utils.Warning("Failed to save user information to config: %v", err)
 			}
 
-			// Get or create OLM credentials
+			// Ensure OLM credentials exist and are valid
 			userID := user.UserID
-			_, _, err := api.GetOlmCredentials(userID)
-			if err != nil {
-				// Not found in keyring, create new OLM
-				deviceName := getDeviceName()
-				defaultOlmName := deviceName
-
-				// Prompt user to edit the name with pre-filled default
-				olmName := defaultOlmName
-				nameForm := huh.NewForm(
-					huh.NewGroup(
-						huh.NewInput().
-							Title("Client name").
-							Description("Enter a name for this client (press Enter to use default)").
-							Value(&olmName),
-					),
-				)
-
-				if err := nameForm.Run(); err != nil {
-					utils.Warning("Failed to collect client name: %v", err)
-				} else {
-					// Use default if user cleared the name
-					if strings.TrimSpace(olmName) == "" {
-						olmName = defaultOlmName
-					} else {
-						olmName = strings.TrimSpace(olmName)
-					}
-
-					response, err := api.GlobalClient.CreateOlm(olmName, userID)
-					if err != nil {
-						utils.Warning("Failed to create OLM: %v", err)
-					} else {
-						// Save to keyring
-						if err := api.SaveOlmCredentials(userID, response.OlmID, response.Secret); err != nil {
-							utils.Warning("Failed to save OLM credentials to keyring: %v", err)
-						}
-					}
-				}
+			if err := utils.EnsureOlmCredentials(userID); err != nil {
+				utils.Warning("Failed to ensure OLM credentials: %v", err)
 			}
 		}
 
@@ -354,8 +320,8 @@ var LoginCmd = &cobra.Command{
 		// Print logged in message after all setup is complete
 		if user != nil {
 			displayName := user.Email
-			if displayName == "" && user.Username != "" {
-				displayName = user.Username
+			if displayName == "" && user.Username != nil && *user.Username != "" {
+				displayName = *user.Username
 			}
 			if displayName != "" {
 				utils.Success("Logged in as %s", displayName)

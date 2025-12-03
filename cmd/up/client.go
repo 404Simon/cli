@@ -13,9 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/huh"
-	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/olm"
+	"github.com/fosrl/cli/internal/secrets"
 	"github.com/fosrl/cli/internal/tui"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/fosrl/newt/logger"
@@ -53,11 +52,9 @@ var (
 	flagPingTimeout   string
 	flagHolepunch     bool
 	flagTlsClientCert string
-	flagVersion       string
 	flagAttached      bool
 	flagLogFile       string
-	flagUserToken     string
-	flagSkipUserToken bool
+	flagSilent        bool
 	flagOverrideDNS   bool
 	flagUpstreamDNS   []string
 )
@@ -69,7 +66,7 @@ var ClientCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 
 		if runtime.GOOS == "windows" {
-			utils.Error("Windows is not supported for detached mode")
+			utils.Error("Windows is not supported")
 			os.Exit(1)
 		}
 
@@ -87,99 +84,63 @@ var ClientCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Get OLM credentials: from flags, or keyring, or create new
+		// Get OLM credentials: from flags, or from keyring (requires logged-in user)
 		var olmID, olmSecret string
 		var credentialsFromKeyring bool
+		var userID string
+
 		if flagID != "" && flagSecret != "" {
-			// Use provided flags
+			// Use provided flags - no user session needed, continue even if not logged in
 			olmID = flagID
 			olmSecret = flagSecret
 			credentialsFromKeyring = false
 		} else if flagID != "" || flagSecret != "" {
 			// If only one flag is provided, require both
-			utils.Error("Both --id and --secret must be provided together, or neither (to use keyring or create new)")
+			utils.Error("Both --id and --secret must be provided together")
 			os.Exit(1)
 		} else {
-			// Ensure user is logged in before getting/creating OLM credentials
+			// No flags provided - assume user is logged in and use credentials from keyring
+			// Ensure user is logged in (this also verifies user exists via API)
 			if err := utils.EnsureLoggedIn(); err != nil {
 				utils.Error("%v", err)
 				os.Exit(1)
 			}
 
 			// Get userId from viper (required for OLM credentials keyring lookup)
-			userID := viper.GetString("userId")
+			userID = viper.GetString("userId")
 			if userID == "" {
-				utils.Error("UserId is required. Please log in first")
+				utils.Error("Please log in first. Run `pangolin login` to login")
 				os.Exit(1)
 			}
 
-			// Try to get from keyring
+			// Ensure OLM credentials exist and are valid
 			var err error
-			olmID, olmSecret, err = api.GetOlmCredentials(userID)
-			if err != nil {
-				// Not found in keyring, create new OLM
-				deviceName := getDeviceName()
-				defaultOlmName := fmt.Sprintf("%s", deviceName)
-
-				// Prompt user to edit the name with pre-filled default
-				olmName := defaultOlmName
-				nameForm := huh.NewForm(
-					huh.NewGroup(
-						huh.NewInput().
-							Title("Client name").
-							Description("Enter a name for this client (press Enter to use default)").
-							Value(&olmName),
-					),
-				)
-
-				if err := nameForm.Run(); err != nil {
-					utils.Error("Error: failed to collect client name: %v", err)
-					os.Exit(1)
-				}
-
-				// Use default if user cleared the name
-				if strings.TrimSpace(olmName) == "" {
-					olmName = defaultOlmName
-				} else {
-					olmName = strings.TrimSpace(olmName)
-				}
-
-				response, err := api.GlobalClient.CreateOlm(olmName, userID)
-				if err != nil {
-					utils.Error("Failed to create OLM: %v", err)
-					os.Exit(1)
-				}
-
-				// Save to keyring
-				if err := api.SaveOlmCredentials(userID, response.OlmID, response.Secret); err != nil {
-					utils.Warning("Failed to save OLM credentials to keyring: %v", err)
-				}
-
-				olmID = response.OlmID
-				olmSecret = response.Secret
-				credentialsFromKeyring = false
-			} else {
-				// Successfully retrieved from keyring
-				credentialsFromKeyring = true
+			if err = utils.EnsureOlmCredentials(userID); err != nil {
+				utils.Error("Failed to ensure OLM credentials: %v", err)
+				os.Exit(1)
 			}
+
+			// Get OLM credentials from keyring (they should exist after EnsureOlmCredentials)
+			olmID, olmSecret, err = secrets.GetOlmCredentials(userID)
+			if err != nil {
+				utils.Error("Failed to get OLM credentials: %v", err)
+				os.Exit(1)
+			}
+			credentialsFromKeyring = true
 		}
 
 		// Get orgId from viper (required for OLM config)
 		orgID := viper.GetString("orgId")
 		if orgID == "" {
-			utils.Error("OrgId is required. Please select an organization first")
+			utils.Error("Please select an organization first. Run `pangolin select org` to select an organization or pass --orgId to the command")
 			os.Exit(1)
 		}
 
-		// Get UserToken if credentials came from keyring (must happen in parent process)
-		// This cannot happen in the subprocess because it runs as root and can't access user's keyring
-		var userToken string
-		if credentialsFromKeyring && !flagSkipUserToken {
-			token, err := api.GetSessionToken()
-			if err != nil {
-				utils.Warning("Failed to get session token: %v", err)
-			} else {
-				userToken = token
+		// Ensure org access (only when using logged-in user, not when credentials come from flags)
+		if credentialsFromKeyring && userID != "" {
+			if err := utils.EnsureOrgAccess(orgID, userID); err != nil {
+				utils.Error("%v", err)
+				os.Exit(1)
 			}
 		}
 
@@ -214,23 +175,16 @@ var ClientCmd = &cobra.Command{
 			// Get endpoint from flag or hostname config (same logic as attached mode)
 			endpoint := flagEndpoint
 			if endpoint == "" {
-				endpoint = viper.GetString("hostname")
-			}
-			if endpoint != "" {
-				cmdArgs = append(cmdArgs, "--endpoint", endpoint)
-			}
-
-			// Pass UserToken to subprocess if we have it (from keyring in parent process)
-			if userToken != "" {
-				cmdArgs = append(cmdArgs, "--user-token", userToken)
-			}
-			if cmd.Flags().Changed("skip-user-token") {
-				if flagSkipUserToken {
-					cmdArgs = append(cmdArgs, "--skip-user-token")
-				} else {
-					cmdArgs = append(cmdArgs, "--skip-user-token=false")
+				// Check if hostname is actually set in config (not just using default)
+				if hostname := viper.GetString("hostname"); hostname != "" {
+					endpoint = hostname
 				}
 			}
+			if endpoint == "" {
+				utils.Error("Endpoint is required. Please login with a host or provide --endpoint flag")
+				os.Exit(1)
+			}
+			cmdArgs = append(cmdArgs, "--endpoint", endpoint)
 
 			// Optional flags - only include if they were explicitly set
 			if cmd.Flags().Changed("mtu") {
@@ -274,9 +228,6 @@ var ClientCmd = &cobra.Command{
 			if cmd.Flags().Changed("tls-client-cert") {
 				cmdArgs = append(cmdArgs, "--tls-client-cert", flagTlsClientCert)
 			}
-			if cmd.Flags().Changed("version") {
-				cmdArgs = append(cmdArgs, "--version", flagVersion)
-			}
 			if cmd.Flags().Changed("override-dns") {
 				if flagOverrideDNS {
 					cmdArgs = append(cmdArgs, "--override-dns")
@@ -307,8 +258,14 @@ var ClientCmd = &cobra.Command{
 				var shellArgs []string
 				shellArgs = append(shellArgs, executable)
 				shellArgs = append(shellArgs, cmdArgs...)
+				// Export environment variable to indicate credentials came from keyring
+				// This allows subprocess to distinguish between user-provided credentials and keyring credentials
+				shellCmd := ""
+				if credentialsFromKeyring {
+					shellCmd = "export PANGOLIN_CREDENTIALS_FROM_KEYRING=1 && "
+				}
 				// Build command: nohup executable args >/dev/null 2>&1 &
-				shellCmd := "nohup"
+				shellCmd += "nohup"
 				for _, arg := range shellArgs {
 					shellCmd += " " + fmt.Sprintf("%q", arg)
 				}
@@ -334,6 +291,11 @@ var ClientCmd = &cobra.Command{
 			if err := procCmd.Wait(); err != nil {
 				utils.Error("Error: failed to start subprocess: %v", err)
 				os.Exit(1)
+			}
+
+			// In silent mode, skip TUI and just exit after starting the process
+			if flagSilent {
+				os.Exit(0)
 			}
 
 			// Show live log preview and status
@@ -424,13 +386,19 @@ var ClientCmd = &cobra.Command{
 			return d
 		}
 
-		// Get endpoint from hostname
+		// Get endpoint from flag or config - required
 		endpoint := flagEndpoint
 		if endpoint == "" {
-			endpoint = viper.GetString("hostname")
+			// Check if hostname is actually set in config (not just using default)
+			if hostname := viper.GetString("hostname"); hostname != "" {
+				endpoint = hostname
+			}
+		}
+		if endpoint == "" {
+			utils.Error("Endpoint is required. Please provide --endpoint flag or set hostname in config")
+			os.Exit(1)
 		}
 
-		// Get values with precedence: CLI flag > config > default
 		mtu := getInt(flagMTU, "mtu", "mtu", defaultMTU)
 		dns := getString(flagDNS, "dns", "dns", defaultDNS)
 		interfaceName := getString(flagInterfaceName, "interface-name", "interface_name", defaultInterfaceName)
@@ -442,7 +410,7 @@ var ClientCmd = &cobra.Command{
 		pingTimeout := getString(flagPingTimeout, "ping-timeout", "ping_timeout", defaultPingTimeout)
 		holepunch := getBool(flagHolepunch, "holepunch", "holepunch", defaultHolepunch)
 		tlsClientCert := getString(flagTlsClientCert, "tls-client-cert", "tls_client_cert", "")
-		version := getString(flagVersion, "version", "version", defaultVersion)
+		version := defaultVersion
 		overrideDNS := getBool(flagOverrideDNS, "override-dns", "override_dns", defaultOverrideDNS)
 		upstreamDNS := getStringSlice(flagUpstreamDNS, "upstream-dns", "upstream_dns", []string{defaultDNS})
 
@@ -478,22 +446,27 @@ var ClientCmd = &cobra.Command{
 			}
 		}
 
-		// Get UserToken from flag (passed from parent process) or from keyring (if in attached mode)
-		// Note: userToken is already declared in outer scope, but in attached mode we may need to fetch it
-		if flagUserToken != "" {
-			// UserToken was passed from parent process (detached mode)
-			userToken = flagUserToken
-		} else if credentialsFromKeyring && !flagSkipUserToken {
-			// In attached mode, fetch from keyring (if not already set in parent process)
-			if userToken == "" {
-				token, err := api.GetSessionToken()
-				if err != nil {
-					utils.Warning("Failed to get session token: %v", err)
-				} else {
-					userToken = token
-				}
+		// Get UserToken from keyring if credentials came from keyring
+		// Check environment variable to distinguish between:
+		// - Parent process passing id/secret from keyring (should fetch userToken)
+		// - User directly passing id/secret (should NOT fetch userToken)
+		var userToken string
+		credentialsFromKeyringEnv := os.Getenv("PANGOLIN_CREDENTIALS_FROM_KEYRING")
+		if credentialsFromKeyringEnv == "1" || credentialsFromKeyring {
+			// Credentials came from keyring, fetch userToken from secrets
+			// (secrets now work in sudo, so subprocess can fetch directly)
+			token, err := secrets.GetSessionToken()
+			if err != nil {
+				utils.Warning("Failed to get session token: %v", err)
+			} else {
+				userToken = token
 			}
 		}
+
+		// Create context for signal handling and cleanup
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer olmpkg.Close()
+		defer stop()
 
 		// Create OLM GlobalConfig with hardcoded values from Swift
 		olmInitConfig := olmpkg.GlobalConfig{
@@ -504,11 +477,17 @@ var ClientCmd = &cobra.Command{
 			Version:    version,
 			OnTerminated: func() {
 				utils.Info("Client process terminated")
+				stop()
 				os.Exit(0)
 			},
 			OnAuthError: func(statusCode int, message string) {
 				utils.Error("Authentication error: %d %s", statusCode, message)
+				stop()
 				os.Exit(1)
+			},
+			OnExit: func() {
+				utils.Info("Client process exiting")
+				os.Exit(0)
 			},
 		}
 
@@ -543,10 +522,6 @@ var ClientCmd = &cobra.Command{
 			}
 		}
 
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer olmpkg.StopTunnel()
-		defer stop()
-
 		olmpkg.Init(ctx, olmInitConfig)
 		if enableAPI {
 			olmpkg.StartApi()
@@ -555,41 +530,35 @@ var ClientCmd = &cobra.Command{
 	},
 }
 
-// getDeviceName returns a human-readable device name
-func getDeviceName() string {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return "Unknown Device"
-	}
-	return hostname
+// addClientFlags adds all client flags to the given command
+// This is the single source of truth for client flag definitions
+func addClientFlags(cmd *cobra.Command) {
+	// Optional flags - if not provided, will use keyring or create new OLM
+	cmd.Flags().StringVar(&flagID, "id", "", "Client ID (optional, will use user info if not provided)")
+	cmd.Flags().StringVar(&flagSecret, "secret", "", "Client secret (optional, will use user info if not provided)")
+
+	// Optional flags
+	cmd.Flags().StringVar(&flagEndpoint, "endpoint", "", "Client endpoint (required if not logged in)")
+	cmd.Flags().IntVar(&flagMTU, "mtu", 0, fmt.Sprintf("MTU (default: %d)", defaultMTU))
+	cmd.Flags().StringVar(&flagDNS, "dns", "", fmt.Sprintf("DNS server (default: %s)", defaultDNS))
+	cmd.Flags().StringVar(&flagInterfaceName, "interface-name", "", fmt.Sprintf("Interface name (default: %s)", defaultInterfaceName))
+	cmd.Flags().StringVar(&flagLogLevel, "log-level", "", fmt.Sprintf("Log level (default: %s)", defaultLogLevel))
+	cmd.Flags().BoolVar(&flagEnableAPI, "enable-api", false, fmt.Sprintf("Enable API (default: %v)", defaultEnableAPI))
+	cmd.Flags().StringVar(&flagHTTPAddr, "http-addr", "", "HTTP address")
+	cmd.Flags().StringVar(&flagSocketPath, "socket-path", "", fmt.Sprintf("Socket path (default: %s)", defaultSocketPath))
+	cmd.Flags().StringVar(&flagPingInterval, "ping-interval", "", fmt.Sprintf("Ping interval (default: %s)", defaultPingInterval))
+	cmd.Flags().StringVar(&flagPingTimeout, "ping-timeout", "", fmt.Sprintf("Ping timeout (default: %s)", defaultPingTimeout))
+	cmd.Flags().BoolVar(&flagHolepunch, "holepunch", false, fmt.Sprintf("Enable holepunching (default: %v)", defaultHolepunch))
+	cmd.Flags().StringVar(&flagTlsClientCert, "tls-client-cert", "", "TLS client certificate path")
+	cmd.Flags().BoolVar(&flagOverrideDNS, "override-dns", defaultOverrideDNS, fmt.Sprintf("Override system DNS for resolving internal resource alias (default: %v)", defaultOverrideDNS))
+	cmd.Flags().StringSliceVar(&flagUpstreamDNS, "upstream-dns", nil, fmt.Sprintf("List of DNS servers to use for external DNS resolution if overriding system DNS (default: %s)", defaultDNS))
+	cmd.Flags().BoolVar(&flagAttached, "attach", false, "Run in attached mode (foreground, default is detached)")
+	cmd.Flags().StringVar(&flagLogFile, "log-file", "", "Path to log file (defaults to standard log location when detached)")
+	cmd.Flags().BoolVar(&flagSilent, "silent", false, "Disable TUI and run silently (only applies to detached mode)")
 }
 
 func init() {
-	// Optional flags - if not provided, will use keyring or create new OLM
-	ClientCmd.Flags().StringVar(&flagID, "id", "", "Client ID (optional, will use keyring or create new if not provided)")
-	ClientCmd.Flags().StringVar(&flagSecret, "secret", "", "Client secret (optional, will use keyring or create new if not provided)")
-
-	// Optional flags
-	ClientCmd.Flags().StringVar(&flagEndpoint, "endpoint", "", "Client endpoint (defaults to hostname from config)")
-	ClientCmd.Flags().IntVar(&flagMTU, "mtu", 0, fmt.Sprintf("MTU (default: %d)", defaultMTU))
-	ClientCmd.Flags().StringVar(&flagDNS, "dns", "", fmt.Sprintf("DNS server (default: %s)", defaultDNS))
-	ClientCmd.Flags().StringVar(&flagInterfaceName, "interface-name", "", fmt.Sprintf("Interface name (default: %s)", defaultInterfaceName))
-	ClientCmd.Flags().StringVar(&flagLogLevel, "log-level", "", fmt.Sprintf("Log level (default: %s)", defaultLogLevel))
-	ClientCmd.Flags().BoolVar(&flagEnableAPI, "enable-api", false, fmt.Sprintf("Enable API (default: %v)", defaultEnableAPI))
-	ClientCmd.Flags().StringVar(&flagHTTPAddr, "http-addr", "", "HTTP address")
-	ClientCmd.Flags().StringVar(&flagSocketPath, "socket-path", "", fmt.Sprintf("Socket path (default: %s)", defaultSocketPath))
-	ClientCmd.Flags().StringVar(&flagPingInterval, "ping-interval", "", fmt.Sprintf("Ping interval (default: %s)", defaultPingInterval))
-	ClientCmd.Flags().StringVar(&flagPingTimeout, "ping-timeout", "", fmt.Sprintf("Ping timeout (default: %s)", defaultPingTimeout))
-	ClientCmd.Flags().BoolVar(&flagHolepunch, "holepunch", false, fmt.Sprintf("Enable holepunching (default: %v)", defaultHolepunch))
-	ClientCmd.Flags().StringVar(&flagTlsClientCert, "tls-client-cert", "", "TLS client certificate path")
-	ClientCmd.Flags().StringVar(&flagVersion, "version", "", fmt.Sprintf("Version (default: %s)", defaultVersion))
-	ClientCmd.Flags().BoolVar(&flagOverrideDNS, "override-dns", defaultOverrideDNS, fmt.Sprintf("Override system DNS for resolving internal resource alias (default: %v)", defaultOverrideDNS))
-	ClientCmd.Flags().StringSliceVar(&flagUpstreamDNS, "upstream-dns", nil, fmt.Sprintf("List of DNS servers to use for external DNS resolution if overriding system DNS (default: %s)", defaultDNS))
-	ClientCmd.Flags().BoolVar(&flagAttached, "attach", false, "Run in attached mode (foreground, default is detached)")
-	ClientCmd.Flags().StringVar(&flagLogFile, "log-file", "", "Path to log file (defaults to standard log location when detached)")
-	ClientCmd.Flags().StringVar(&flagUserToken, "user-token", "", "User session token (if not provided, will be retrieved from keyring)")
-	ClientCmd.Flags().BoolVar(&flagSkipUserToken, "skip-user-token", false, "Skip user token retrieval from keyring (run without user token)")
-
+	addClientFlags(ClientCmd)
 	UpCmd.AddCommand(ClientCmd)
 }
 

@@ -1,4 +1,4 @@
-package client
+package status
 
 import (
 	"encoding/json"
@@ -45,8 +45,14 @@ var ClientCmd = &cobra.Command{
 	},
 }
 
+// addStatusClientFlags adds all status client flags to the given command
+// This is the single source of truth for status client flag definitions
+func addStatusClientFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&flagJSON, "json", false, "Print raw JSON response")
+}
+
 func init() {
-	ClientCmd.Flags().BoolVar(&flagJSON, "json", false, "Print raw JSON response")
+	addStatusClientFlags(ClientCmd)
 }
 
 // printJSON prints the status response as JSON

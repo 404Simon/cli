@@ -103,16 +103,11 @@ type LoginResponse struct {
 
 // User represents a user retrieved from the API
 type User struct {
-	UserID           string  `json:"userId"`
-	Email            string  `json:"email"`
-	Username         string  `json:"username"`
-	Name             string  `json:"name"`
-	Type             string  `json:"type"`
-	TwoFactorEnabled bool    `json:"twoFactorEnabled"`
-	EmailVerified    bool    `json:"emailVerified"`
-	ServerAdmin      bool    `json:"serverAdmin"`
-	IDPName          *string `json:"idpName"`
-	IDPID            *int    `json:"idpId"`
+	Id       string  `json:"id"`
+	UserID   string  `json:"userId"` // Alias for Id, used in some contexts
+	Email    string  `json:"email"`
+	Username *string `json:"username,omitempty"`
+	Name     *string `json:"name,omitempty"`
 }
 
 // Org represents an organization
@@ -157,6 +152,88 @@ type CreateOlmRequest struct {
 
 // CreateOlmResponse represents the response from creating an OLM
 type CreateOlmResponse struct {
+	Id     string `json:"id"`
 	OlmID  string `json:"olmId"`
 	Secret string `json:"secret"`
+	Name   string `json:"name"`
+}
+
+// EmptyResponse represents an empty API response
+type EmptyResponse struct{}
+
+// GetOrgResponse represents the response for getting an organization
+type GetOrgResponse struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// CheckOrgUserAccessResponse represents the response for checking org user access
+type CheckOrgUserAccessResponse struct {
+	Allowed  bool         `json:"allowed"`
+	Error    *string      `json:"error,omitempty"`
+	Policies *OrgPolicies `json:"policies,omitempty"`
+}
+
+// OrgPolicies represents organization policies
+type OrgPolicies struct {
+	RequiredTwoFactor *bool             `json:"requiredTwoFactor,omitempty"`
+	MaxSessionLength  *MaxSessionLength `json:"maxSessionLength,omitempty"`
+	PasswordAge       *PasswordAge      `json:"passwordAge,omitempty"`
+}
+
+// MaxSessionLength represents max session length policy
+type MaxSessionLength struct {
+	Compliant             bool `json:"compliant"`
+	MaxSessionLengthHours int  `json:"maxSessionLengthHours"`
+	SessionAgeHours       int  `json:"sessionAgeHours"`
+}
+
+// PasswordAge represents password age policy
+type PasswordAge struct {
+	Compliant          bool `json:"compliant"`
+	MaxPasswordAgeDays int  `json:"maxPasswordAgeDays"`
+	PasswordAgeDays    int  `json:"passwordAgeDays"`
+}
+
+// GetClientResponse represents the response for getting a client
+type GetClientResponse struct {
+	Id    int     `json:"id"`
+	Name  string  `json:"name"`
+	OlmID *string `json:"olmId,omitempty"`
+}
+
+// MyDeviceUser represents a user in the my device response
+type MyDeviceUser struct {
+	UserID           string  `json:"userId"`
+	Email            string  `json:"email"`
+	Username         *string `json:"username,omitempty"`
+	Name             *string `json:"name,omitempty"`
+	Type             *string `json:"type,omitempty"`
+	TwoFactorEnabled *bool   `json:"twoFactorEnabled,omitempty"`
+	EmailVerified    *bool   `json:"emailVerified,omitempty"`
+	ServerAdmin      *bool   `json:"serverAdmin,omitempty"`
+	IDPName          *string `json:"idpName,omitempty"`
+	IDPID            *int    `json:"idpId,omitempty"`
+}
+
+// ResponseOrg represents an organization in the my device response
+type ResponseOrg struct {
+	OrgID   string `json:"orgId"`
+	OrgName string `json:"orgName"`
+	RoleID  int    `json:"roleId"`
+}
+
+// Olm represents an OLM (Online Management) record
+type Olm struct {
+	OlmID  string  `json:"olmId"`
+	UserID string  `json:"userId"`
+	Name   *string `json:"name,omitempty"`
+	Secret *string `json:"secret,omitempty"`
+}
+
+// MyDeviceResponse represents the response for getting my device
+type MyDeviceResponse struct {
+	User MyDeviceUser  `json:"user"`
+	Orgs []ResponseOrg `json:"orgs"`
+	Olm  *Olm          `json:"olm,omitempty"`
 }
