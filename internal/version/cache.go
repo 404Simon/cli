@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	// UpdateCheckInterval is how often we check for updates (24 hours)
-	UpdateCheckInterval = 24 * time.Hour
+	// UpdateCheckInterval is how often we check for updates
+	UpdateCheckInterval = 12 * time.Hour
 	// UpdateCheckCacheFile is the name of the cache file
 	UpdateCheckCacheFile = "pangolin-update-check.json"
 )

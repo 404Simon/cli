@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -117,9 +118,14 @@ func CheckForUpdate() (*GitHubRelease, error) {
 }
 
 // CheckForUpdateAsync checks for updates asynchronously and displays a message if available.
-// This function should be called in a goroutine to avoid blocking.
+// It waits a short time for the check to complete so the message is shown even for fast commands.
 // It respects the cache interval and only checks once per day.
 func CheckForUpdateAsync(showMessage func(*GitHubRelease)) {
+	// Check if update checking is disabled in config
+	if viper.GetBool("disable_update_check") {
+		return
+	}
+
 	// First, check if we have cached info that shows an update
 	if cachedRelease, ok := getCachedUpdateInfo(); ok {
 		showMessage(cachedRelease)
@@ -131,15 +137,32 @@ func CheckForUpdateAsync(showMessage func(*GitHubRelease)) {
 		return
 	}
 
+	// Channel to signal when the check is complete
+	done := make(chan *GitHubRelease, 1)
+
 	// Check for updates in the background
 	go func() {
 		latest, err := CheckForUpdate()
 		if err != nil {
 			// Silently fail - don't show errors for update checks
+			done <- nil
 			return
 		}
 
 		// Cache the result (even if no update, to avoid checking too frequently)
 		cacheUpdateInfo(latest)
+		done <- latest
 	}()
+
+	// Wait a short time for the check to complete (200ms should be enough for most cases)
+	select {
+	case release := <-done:
+		// Check completed, show message if update is available
+		if release != nil {
+			showMessage(release)
+		}
+	case <-time.After(1000 * time.Millisecond):
+		// Timeout - continue without showing message (check continues in background)
+		// This ensures fast commands don't get blocked
+	}
 }
