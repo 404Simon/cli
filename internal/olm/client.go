@@ -14,8 +14,7 @@ import (
 
 const (
 	defaultSocketPath = "/var/run/olm.sock"
-	// PangolinCLIVersion is the version string used to identify clients started by the Pangolin CLI
-	PangolinCLIVersion = "Pangolin CLI"
+	AgentName             = "Pangolin CLI"
 )
 
 // Client handles communication with the OLM process via Unix socket
@@ -30,6 +29,7 @@ type StatusResponse struct {
 	Registered      bool                   `json:"registered"`
 	Terminated      bool                   `json:"terminated"`
 	Version         string                 `json:"version,omitempty"`
+	Agent           string                 `json:"agent,omitempty"`
 	OrgID           string                 `json:"orgId,omitempty"`
 	PeerStatuses    map[int]*OLMPeerStatus `json:"peers,omitempty"`
 	NetworkSettings map[string]interface{} `json:"networkSettings,omitempty"`

@@ -25,7 +25,7 @@ var LogoutCmd = &cobra.Command{
 			if err != nil {
 				utils.Warning("Failed to get client status: %v", err)
 				// Continue with logout even if we can't check version
-			} else if status.Version == olm.PangolinCLIVersion {
+			} else if status.Agent == olm.AgentName {
 				// Only prompt and stop if client was started by this CLI
 				// Prompt user to confirm they want to disconnect the client
 				var confirm bool

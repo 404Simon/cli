@@ -32,7 +32,7 @@ var ClientCmd = &cobra.Command{
 			utils.Error("Failed to get client status: %v", err)
 			os.Exit(1)
 		}
-		if status.Version != olm.PangolinCLIVersion {
+		if status.Agent != olm.AgentName {
 			utils.Error("Client was not started by Pangolin CLI (version: %s)", status.Version)
 			utils.Info("Only clients started by this CLI can be stopped using this command")
 			os.Exit(1)
