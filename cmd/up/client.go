@@ -396,6 +396,12 @@ var ClientCmd = &cobra.Command{
 		interfaceName := getString(flagInterfaceName, "interface-name", "interface_name", defaultInterfaceName)
 		logLevel := getString(flagLogLevel, "log-level", "log_level", defaultLogLevel)
 		enableAPI := getBool(flagEnableAPI, "enable-api", "enable_api", defaultEnableAPI)
+
+		// In detached mode, API cannot be disabled (required for status/control)
+		if !flagAttached && !enableAPI {
+			enableAPI = true
+		}
+
 		httpAddr := getString(flagHTTPAddr, "http-addr", "http_addr", "")
 		socketPath := getString(flagSocketPath, "socket-path", "socket_path", defaultSocketPath)
 		pingInterval := getString(flagPingInterval, "ping-interval", "ping_interval", defaultPingInterval)
@@ -462,7 +468,7 @@ var ClientCmd = &cobra.Command{
 		// Create OLM GlobalConfig with hardcoded values from Swift
 		olmInitConfig := olmpkg.GlobalConfig{
 			LogLevel:   logLevel,
-			EnableAPI:  true,
+			EnableAPI:  enableAPI,
 			SocketPath: socketPath,
 			HTTPAddr:   httpAddr,
 			Version:    version,

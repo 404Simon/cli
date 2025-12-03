@@ -18,8 +18,6 @@ import (
 type ExitCondition func(client *olm.Client, status *olm.StatusResponse) (shouldExit bool, completed bool)
 
 // StatusFormatter is a function that formats the status display
-// Parameters: isRunning (whether client is running), status (current status response, may be nil)
-// Returns: the status string to display
 type StatusFormatter func(isRunning bool, status *olm.StatusResponse) string
 
 // LogPreviewConfig configures the log preview TUI
