@@ -16,12 +16,6 @@ pangolin version [flags]
   -h, --help   help for version
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin](pangolin.md)	 - Pangolin CLI

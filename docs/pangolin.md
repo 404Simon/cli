@@ -5,8 +5,7 @@ Pangolin CLI
 ### Options
 
 ```
-  -h, --help           help for pangolin
-      --orgId string   Organization ID
+  -h, --help   help for pangolin
 ```
 
 ### SEE ALSO

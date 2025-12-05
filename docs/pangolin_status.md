@@ -17,12 +17,6 @@ pangolin status [flags]
       --json   Print raw JSON response
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin](pangolin.md)	 - Pangolin CLI

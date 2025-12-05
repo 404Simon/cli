@@ -12,12 +12,6 @@ Manage authentication and sessions
   -h, --help   help for auth
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin](pangolin.md)	 - Pangolin CLI

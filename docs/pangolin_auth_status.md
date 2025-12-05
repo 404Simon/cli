@@ -16,12 +16,6 @@ pangolin auth status [flags]
   -h, --help   help for status
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin auth](pangolin_auth.md)	 - Authentication commands

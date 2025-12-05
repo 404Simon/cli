@@ -16,12 +16,6 @@ pangolin down client [flags]
   -h, --help   help for client
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin down](pangolin_down.md)	 - Stop a client

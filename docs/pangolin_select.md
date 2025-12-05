@@ -12,12 +12,6 @@ Select an organization to work with
   -h, --help   help for select
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin](pangolin.md)	 - Pangolin CLI

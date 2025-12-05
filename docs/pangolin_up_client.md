@@ -20,9 +20,10 @@ pangolin up client [flags]
       --holepunch                Enable holepunching (default: true)
       --http-addr string         HTTP address
       --id string                Client ID (optional, will use user info if not provided)
-      --interface-name string    Interface name (default: Pangolin)
+      --interface-name string    Interface name (default: pangolin)
       --log-level string         Log level (default: info)
       --mtu int                  MTU (default: 1280)
+      --org-id string            Organization ID (optional, will use selected org if not provided)
       --override-dns             Override system DNS for resolving internal resource alias (default: true) (default true)
       --ping-interval string     Ping interval (default: 5s)
       --ping-timeout string      Ping timeout (default: 5s)
@@ -30,12 +31,6 @@ pangolin up client [flags]
       --silent                   Disable TUI and run silently (only applies to detached mode)
       --tls-client-cert string   TLS client certificate path
       --upstream-dns strings     List of DNS servers to use for external DNS resolution if overriding system DNS (default: 8.8.8.8)
-```
-
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
 ```
 
 ### SEE ALSO

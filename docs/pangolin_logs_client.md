@@ -18,12 +18,6 @@ pangolin logs client [flags]
   -n, --lines int   Number of lines to show (0 = all lines, only used with -f to show lines before following)
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin logs](pangolin_logs.md)	 - View client logs

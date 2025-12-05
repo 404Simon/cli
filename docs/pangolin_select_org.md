@@ -13,13 +13,8 @@ pangolin select org [flags]
 ### Options
 
 ```
-  -h, --help   help for org
-```
-
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
+  -h, --help            help for org
+      --org-id string   Organization ID to select
 ```
 
 ### SEE ALSO

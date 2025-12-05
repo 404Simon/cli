@@ -12,12 +12,6 @@ View and follow client logs
   -h, --help   help for logs
 ```
 
-### Options inherited from parent commands
-
-```
-      --orgId string   Organization ID
-```
-
 ### SEE ALSO
 
 * [pangolin](pangolin.md)	 - Pangolin CLI
