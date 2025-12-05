@@ -27,7 +27,7 @@ import (
 const (
 	defaultMTU           = 1280
 	defaultDNS           = "8.8.8.8"
-	defaultInterfaceName = "Pangolin"
+	defaultInterfaceName = "pangolin"
 	defaultLogLevel      = "info"
 	defaultEnableAPI     = true
 	defaultSocketPath    = "/var/run/olm.sock"
