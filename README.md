@@ -11,8 +11,11 @@ This client can be used with both:
 
 ## Download & Install
 
-- [Pangolin CLI Installer](https://pangolin.net/downloads) - This is the official page to download the latest installer file for macOS and Linux. The installer will pull the correct binary for your system's operating system and architecture.
-- [Older Versions](https://github.com/fosrl/cli/releases) - The releases section of this repository contains release notes and download artifacts for the latest version and all older versions.
+```bash
+curl -fsSL https://pangolin.net/get-cli.sh | bash
+```
+
+- [All Versions](https://github.com/fosrl/cli/releases) - The releases section of this repository contains release notes and download artifacts for the latest version and all older versions.
 
 ## Documentation
 
