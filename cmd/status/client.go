@@ -67,12 +67,12 @@ func printJSON(status *olm.StatusResponse) {
 // printStatusTable prints the status information in a table format
 func printStatusTable(status *olm.StatusResponse) {
 	// Print connection status
-	headers := []string{"VERSION", "STATUS", "REGISTERED", "ORG ID"}
+	headers := []string{"AGENT", "VERSION", "STATUS", "ORG ID"}
 	rows := [][]string{
 		{
+			status.Agent,
 			status.Version,
 			formatStatus(status.Connected),
-			fmt.Sprintf("%t", status.Registered),
 			status.OrgID,
 		},
 	}

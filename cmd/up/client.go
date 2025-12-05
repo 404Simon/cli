@@ -33,7 +33,7 @@ const (
 	defaultSocketPath    = "/var/run/olm.sock"
 	defaultPingInterval  = "5s"
 	defaultPingTimeout   = "5s"
-	defaultHolepunch     = false
+	defaultHolepunch     = true
 	defaultVersion       = "Pangolin CLI"
 	defaultOverrideDNS   = true
 )
@@ -458,6 +458,7 @@ var ClientCmd = &cobra.Command{
 			SocketPath: socketPath,
 			HTTPAddr:   httpAddr,
 			Version:    version,
+			Agent:      defaultVersion,
 			OnTerminated: func() {
 				utils.Info("Client process terminated")
 				stop()
