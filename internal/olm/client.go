@@ -14,7 +14,7 @@ import (
 
 const (
 	defaultSocketPath = "/var/run/olm.sock"
-	AgentName             = "Pangolin CLI"
+	AgentName         = "Pangolin CLI"
 )
 
 // Client handles communication with the OLM process via Unix socket
@@ -38,6 +38,7 @@ type StatusResponse struct {
 // OLMPeerStatus represents the status of a peer connection
 type OLMPeerStatus struct {
 	SiteID    int           `json:"siteId"`
+	SiteName  string        `json:"name"`
 	Connected bool          `json:"connected"`
 	RTT       time.Duration `json:"rtt"`
 	LastSeen  time.Time     `json:"lastSeen"`

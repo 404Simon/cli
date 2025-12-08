@@ -67,7 +67,7 @@ func printJSON(status *olm.StatusResponse) {
 // printStatusTable prints the status information in a table format
 func printStatusTable(status *olm.StatusResponse) {
 	// Print connection status
-	headers := []string{"AGENT", "VERSION", "STATUS", "ORG ID"}
+	headers := []string{"AGENT", "VERSION", "STATUS", "ORG"}
 	rows := [][]string{
 		{
 			status.Agent,
@@ -81,14 +81,14 @@ func printStatusTable(status *olm.StatusResponse) {
 	// Print peers if there are any
 	if len(status.PeerStatuses) > 0 {
 		fmt.Println("")
-		peerHeaders := []string{"SITE ID", "ENDPOINT", "STATUS", "LAST SEEN", "RELAY"}
+		peerHeaders := []string{"SITE", "ENDPOINT", "STATUS", "LAST SEEN", "RELAY"}
 		peerRows := [][]string{}
 
 		for _, peer := range status.PeerStatuses {
 			lastSeen := formatLastSeen(peer.LastSeen.Format(time.RFC3339))
 
 			peerRows = append(peerRows, []string{
-				fmt.Sprintf("%d", peer.SiteID),
+				peer.SiteName,
 				peer.Endpoint,
 				formatStatus(peer.Connected),
 				lastSeen,
