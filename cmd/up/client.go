@@ -83,10 +83,6 @@ var ClientCmd = &cobra.Command{
 		if flagID != "" && flagSecret != "" {
 			// Use provided flags - no user session needed, continue even if not logged in
 			// Org cannot be set when passing id and secret directly
-			if flagOrgID != "" {
-				utils.Error("--org cannot be set when passing --id and --secret directly")
-				os.Exit(1)
-			}
 			olmID = flagID
 			olmSecret = flagSecret
 			credentialsFromKeyring = false
@@ -140,10 +136,6 @@ var ClientCmd = &cobra.Command{
 		} else {
 			// When using id/secret directly, orgID is optional (may come from credentials)
 			orgID = flagOrgID
-			if orgID == "" {
-				orgID = viper.GetString("orgId")
-			}
-			// orgID is optional when using direct credentials
 		}
 
 		// Ensure org access (only when using logged-in user, not when credentials come from flags)
