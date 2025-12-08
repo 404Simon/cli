@@ -5,7 +5,6 @@ OUTPUT_DIR=bin
 LDFLAGS=-ldflags="-s -w"
 
 # GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/pangolin .
-
 all: clean build
 
 build:
@@ -27,3 +26,12 @@ docs:
 	@echo "Generating markdown documentation..."
 	@go run tools/gendocs/main.go -dir docs
 	@echo "Documentation generated in docs/"
+
+go-build-release:
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o bin/pangolin-cli_linux_arm64
+	GOOS=linux GOARCH=arm GOARM=7 go build $(LDFLAGS) -o bin/pangolin-cli_linux_arm32
+	GOOS=linux GOARCH=arm GOARM=6 go build $(LDFLAGS) -o bin/pangolin-cli_linux_arm32v6
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o bin/pangolin-cli_linux_amd64
+	GOOS=linux GOARCH=riscv64 go build $(LDFLAGS) -o bin/pangolin-cli_linux_riscv64
+	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o bin/pangolin-cli_darwin_arm64
+	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o bin/pangolin-cli_darwin_amd64
