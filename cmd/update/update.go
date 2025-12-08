@@ -16,7 +16,7 @@ var UpdateCmd = &cobra.Command{
 		utils.Info("Updating Pangolin CLI...")
 		
 		// Execute: curl -fsSL https://pangolin.net/get-cli.sh | bash
-		updateCmd := exec.Command("sh", "-c", "curl -fsSL https://pangolin.net/get-cli.sh | bash")
+		updateCmd := exec.Command("sh", "-c", "curl -fsSL https://static.pangolin.net/get-cli.sh | bash")
 		updateCmd.Stdin = os.Stdin
 		updateCmd.Stdout = os.Stdout
 		updateCmd.Stderr = os.Stderr

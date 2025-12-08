@@ -12,7 +12,7 @@ This client can be used with both:
 ## Download & Install
 
 ```bash
-curl -fsSL https://pangolin.net/get-cli.sh | bash
+curl -fsSL https://static.pangolin.net/get-cli.sh | bash
 ```
 
 - [All Versions](https://github.com/fosrl/cli/releases) - The releases section of this repository contains release notes and download artifacts for the latest version and all older versions.
