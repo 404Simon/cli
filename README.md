@@ -19,4 +19,4 @@ curl -fsSL https://static.pangolin.net/get-cli.sh | bash
 
 ## Documentation
 
-Documentation for the CLI client and all other documentation for Pangolin can be found at [docs.pangolin.net](https://docs.pangolin.net/manage/clients/cli).
+Documentation for the CLI client and all other documentation for Pangolin can be found at [docs.pangolin.net](https://docs.pangolin.net/manage/clients/install-client#pangolin-cli-linux).
