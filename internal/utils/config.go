@@ -18,9 +18,9 @@ func GetPangolinDir() (string, error) {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	pangolinDir := filepath.Join(homeDir, ".pangolin")
-	if err := os.MkdirAll(pangolinDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create .pangolin directory: %w", err)
+	pangolinDir := filepath.Join(homeDir, ".config", "pangolin")
+	if err := os.MkdirAll(pangolinDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create %s: %w", pangolinDir, err)
 	}
 
 	return pangolinDir, nil
