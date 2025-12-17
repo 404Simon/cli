@@ -14,15 +14,14 @@ import (
 	"time"
 
 	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/config"
 	"github.com/fosrl/cli/internal/olm"
-	"github.com/fosrl/cli/internal/secrets"
 	"github.com/fosrl/cli/internal/tui"
 	"github.com/fosrl/cli/internal/utils"
 	versionpkg "github.com/fosrl/cli/internal/version"
 	"github.com/fosrl/newt/logger"
 	olmpkg "github.com/fosrl/olm/olm"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -65,6 +64,7 @@ var ClientCmd = &cobra.Command{
 	Long:  "Bring up a client tunneled connection",
 	Run: func(cmd *cobra.Command, args []string) {
 		apiClient := api.FromContext(cmd.Context())
+		accountStore := config.AccountStoreFromContext(cmd.Context())
 
 		if runtime.GOOS == "windows" {
 			utils.Error("Windows is not supported")
@@ -80,7 +80,6 @@ var ClientCmd = &cobra.Command{
 
 		var olmID, olmSecret string
 		var credentialsFromKeyring bool
-		var userID string
 
 		if flagID != "" && flagSecret != "" {
 			// Use provided flags - no user session needed, continue even if not logged in
@@ -93,29 +92,30 @@ var ClientCmd = &cobra.Command{
 			utils.Error("Both --id and --secret must be provided together")
 			os.Exit(1)
 		} else {
-			// No flags provided - assume user is logged in and use credentials from config
-			// Ensure user is logged in (this also verifies user exists via API)
-			if err := utils.EnsureLoggedIn(apiClient); err != nil {
-				utils.Error("%v", err)
-				os.Exit(1)
-			}
-
-			// Get userId from viper (required for OLM credentials lookup)
-			userID = viper.GetString("userId")
-			if userID == "" {
-				utils.Error("Please log in first. Run `pangolin login` to login")
+			activeAccount, err := accountStore.ActiveAccount()
+			if err != nil {
+				utils.Error("Error: %v. Run `pangolin login` to login", err)
 				os.Exit(1)
 			}
 
 			// Ensure OLM credentials exist and are valid
-			var err error
-			if err = utils.EnsureOlmCredentials(apiClient, userID); err != nil {
+			newCredsGenerated, err := utils.EnsureOlmCredentials(apiClient, activeAccount)
+			if err != nil {
 				utils.Error("Failed to ensure OLM credentials: %v", err)
 				os.Exit(1)
 			}
 
-			// Get OLM credentials from config (they should exist after EnsureOlmCredentials)
-			olmID, olmSecret, err = secrets.GetOlmCredentials(userID)
+			if newCredsGenerated {
+				err := accountStore.Save()
+				if err != nil {
+					utils.Error("Failed to save accounts to store: %v", err)
+					os.Exit(1)
+				}
+			}
+
+			olmID = activeAccount.OlmCredentials.ID
+			olmSecret = activeAccount.OlmCredentials.Secret
+
 			if err != nil {
 				utils.Error("Failed to get OLM credentials: %v", err)
 				os.Exit(1)
@@ -123,26 +123,23 @@ var ClientCmd = &cobra.Command{
 			credentialsFromKeyring = true
 		}
 
+		orgID := flagOrgID
+
 		// Get orgId from flag or viper (required for OLM config when using logged-in user)
-		var orgID string
 		if credentialsFromKeyring {
+			activeAccount, _ := accountStore.ActiveAccount()
+
 			// When using credentials from keyring, orgID is required
-			orgID = flagOrgID
 			if orgID == "" {
-				orgID = viper.GetString("orgId")
+				orgID = activeAccount.OrgID
 			}
+
 			if orgID == "" {
 				utils.Error("Please select an organization first. Run `pangolin select org` to select an organization or pass --org [id] to the command")
 				os.Exit(1)
 			}
-		} else {
-			// When using id/secret directly, orgID is optional (may come from credentials)
-			orgID = flagOrgID
-		}
 
-		// Ensure org access (only when using logged-in user, not when credentials come from flags)
-		if credentialsFromKeyring && userID != "" {
-			if err := utils.EnsureOrgAccess(apiClient, orgID, userID); err != nil {
+			if err := utils.EnsureOrgAccess(apiClient, activeAccount); err != nil {
 				utils.Error("%v", err)
 				os.Exit(1)
 			}
@@ -152,6 +149,14 @@ var ClientCmd = &cobra.Command{
 		var logFile string
 		if !flagAttached {
 			logFile = utils.GetDefaultLogPath()
+		}
+
+		endpoint := flagEndpoint
+		if endpoint == "" {
+			activeAccount, _ := accountStore.ActiveAccount()
+			if activeAccount != nil {
+				endpoint = activeAccount.Host
+			}
 		}
 
 		// Handle detached mode - subprocess self without --attach flag
@@ -168,15 +173,7 @@ var ClientCmd = &cobra.Command{
 			cmdArgs := []string{"up", "client"}
 
 			// Add org flag (required for subprocess, which runs as root and won't have user's config)
-			// Use flag value if provided, otherwise use the resolved orgID
-			// Only add org flag if credentials came from keyring (not when id/secret are provided directly)
-			if credentialsFromKeyring {
-				if flagOrgID != "" {
-					cmdArgs = append(cmdArgs, "--org", flagOrgID)
-				} else {
-					cmdArgs = append(cmdArgs, "--org", orgID)
-				}
-			}
+			cmdArgs = append(cmdArgs, "--org", orgID)
 
 			// Add all flags that were set (except --attach)
 			// OLM credentials are always included (from flags, config, or newly created)
@@ -185,13 +182,6 @@ var ClientCmd = &cobra.Command{
 
 			// Always pass endpoint to subprocess (required, subprocess won't have user's config)
 			// Get endpoint from flag or hostname config (same logic as attached mode)
-			endpoint := flagEndpoint
-			if endpoint == "" {
-				// Check if hostname is actually set in config (not just using default)
-				if hostname := viper.GetString("hostname"); hostname != "" {
-					endpoint = hostname
-				}
-			}
 			if endpoint == "" {
 				utils.Error("Endpoint is required. Please login with a host or provide --endpoint flag")
 				os.Exit(1)
@@ -383,14 +373,6 @@ var ClientCmd = &cobra.Command{
 			return d
 		}
 
-		// Get endpoint from flag or config - required
-		endpoint := flagEndpoint
-		if endpoint == "" {
-			// Check if hostname is actually set in config (not just using default)
-			if hostname := viper.GetString("hostname"); hostname != "" {
-				endpoint = hostname
-			}
-		}
 		if endpoint == "" {
 			utils.Error("Endpoint is required. Please provide --endpoint flag or set hostname in config")
 			os.Exit(1)
@@ -457,12 +439,13 @@ var ClientCmd = &cobra.Command{
 		credentialsFromKeyringEnv := os.Getenv("PANGOLIN_CREDENTIALS_FROM_KEYRING")
 		if credentialsFromKeyringEnv == "1" || credentialsFromKeyring {
 			// Credentials came from config, fetch userToken from secrets
-			token, err := secrets.GetSessionToken()
+			activeAccount, err := accountStore.ActiveAccount()
 			if err != nil {
-				utils.Warning("Failed to get session token: %v", err)
-			} else {
-				userToken = token
+				utils.Error("Failed to get session token: %v", err)
+				return
 			}
+
+			userToken = activeAccount.SessionToken
 		}
 
 		// Create context for signal handling and cleanup
