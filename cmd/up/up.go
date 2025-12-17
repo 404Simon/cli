@@ -12,6 +12,8 @@ var UpCmd = &cobra.Command{
 	Short: "Start a client",
 	Long:  "Bring up a client connection",
 	Run: func(cmd *cobra.Command, args []string) {
+		// _ = api.FromContext(cmd.Context())
+
 		// Default to client subcommand if no subcommand is provided
 		// This makes "pangolin up" equivalent to "pangolin up client"
 		cmd.Flags().VisitAll(func(flag *pflag.Flag) {
@@ -26,6 +28,7 @@ var UpCmd = &cobra.Command{
 				ClientCmd.Flags().Set(flag.Name, flag.Value.String())
 			}
 		})
+		ClientCmd.SetContext(cmd.Context())
 		ClientCmd.Run(ClientCmd, args)
 	},
 }

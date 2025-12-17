@@ -11,6 +11,7 @@ var DownCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		// Default to client subcommand if no subcommand is provided
 		// This makes "pangolin down" equivalent to "pangolin down client"
+		ClientCmd.SetContext(cmd.Context())
 		ClientCmd.Run(ClientCmd, args)
 	},
 }
