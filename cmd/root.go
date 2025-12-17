@@ -102,6 +102,7 @@ func Execute() {
 	cmd, err := RootCommand(true)
 	if err != nil {
 		utils.Error("%v", err)
+		os.Exit(1)
 	}
 
 	if err := cmd.Execute(); err != nil {
