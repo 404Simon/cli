@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/config"
 	"github.com/fosrl/cli/internal/olm"
 	"github.com/fosrl/cli/internal/tui"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var flagOrgID string
@@ -19,18 +19,17 @@ var orgCmd = &cobra.Command{
 	Long:  "List your organizations and select one to use",
 	Run: func(cmd *cobra.Command, args []string) {
 		apiClient := api.FromContext(cmd.Context())
+		accountStore := config.AccountStoreFromContext(cmd.Context())
 
-		// Check if user is logged in
-		if err := utils.EnsureLoggedIn(apiClient); err != nil {
+		activeAccount, err := accountStore.ActiveAccount()
+		if err != nil {
 			utils.Error("%v", err)
 			return
 		}
 
-		// Get userId from config
-		userID := viper.GetString("userId")
+		userID := activeAccount.UserID
 
-		var orgID string
-		var err error
+		var selectedOrgID string
 
 		// Check if --org-id flag is provided
 		if flagOrgID != "" {
@@ -56,41 +55,40 @@ var orgCmd = &cobra.Command{
 			}
 
 			// Org exists, use it
-			orgID = flagOrgID
-
-			// Save to config
-			viper.Set("orgId", orgID)
-			if err := viper.WriteConfig(); err != nil {
-				utils.Error("Failed to save organization to config: %v", err)
-				return
-			}
+			selectedOrgID = flagOrgID
 		} else {
 			// No flag provided, use GUI selection
-			orgID, err = utils.SelectOrgForm(apiClient, userID)
+			selectedOrgID, err = utils.SelectOrgForm(apiClient, userID)
 			if err != nil {
 				utils.Error("%v", err)
 				return
 			}
 		}
 
+		activeAccount.OrgID = selectedOrgID
+		if err := accountStore.Save(); err != nil {
+			utils.Error("Failed to save account to store: %v", err)
+			return
+		}
+
 		// Switch active client if running
-		utils.SwitchActiveClientOrg(orgID)
+		utils.SwitchActiveClientOrg(selectedOrgID)
 
 		// Check if olmClient is running and if we need to monitor a switch
 		olmClient := olm.NewClient("")
 		if olmClient.IsRunning() {
 			// Get current status - if it doesn't match the new org, monitor the switch
 			currentStatus, err := olmClient.GetStatus()
-			if err == nil && currentStatus != nil && currentStatus.OrgID != orgID {
+			if err == nil && currentStatus != nil && currentStatus.OrgID != selectedOrgID {
 				// Switch was sent, monitor the switch process
-				monitorOrgSwitch(orgID)
+				monitorOrgSwitch(selectedOrgID)
 			} else {
 				// Already on the correct org or no status available
-				utils.Success("Successfully selected organization: %s", orgID)
+				utils.Success("Successfully selected organization: %s", selectedOrgID)
 			}
 		} else {
 			// Client not running, no switch needed
-			utils.Success("Successfully selected organization: %s", orgID)
+			utils.Success("Successfully selected organization: %s", selectedOrgID)
 		}
 	},
 }
