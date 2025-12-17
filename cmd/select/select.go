@@ -1,6 +1,7 @@
 package selectcmd
 
 import (
+	"github.com/fosrl/cli/cmd/select/account"
 	"github.com/fosrl/cli/cmd/select/org"
 	"github.com/spf13/cobra"
 )
@@ -12,5 +13,6 @@ var SelectCmd = &cobra.Command{
 }
 
 func init() {
+	SelectCmd.AddCommand(account.AccountCmd)
 	SelectCmd.AddCommand(org.OrgCmd)
 }
