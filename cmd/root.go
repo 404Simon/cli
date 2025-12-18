@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/fosrl/cli/cmd/auth"
 	"github.com/fosrl/cli/cmd/auth/login"
@@ -35,21 +36,7 @@ func RootCommand(initResources bool) (*cobra.Command, error) {
 		CompletionOptions: cobra.CompletionOptions{
 			HiddenDefaultCmd: true,
 		},
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			// Skip update check for version and update commands
-			// Check both the command name and if it's one of these specific commands
-			cmdName := cmd.Name()
-			if cmdName == "version" || cmdName == "update" {
-				return
-			}
-
-			// Check for updates asynchronously
-			versionpkg.CheckForUpdateAsync(func(release *versionpkg.GitHubRelease) {
-				logger.Warning("A new version is available: %s (current: %s)", release.TagName, versionpkg.Version)
-				logger.Info("Run 'pangolin update' to update to the latest version")
-				fmt.Println()
-			})
-		},
+		PersistentPreRunE: mainCommandPreRun,
 	}
 
 	cmd.AddCommand(auth.AuthCmd)
@@ -65,6 +52,15 @@ func RootCommand(initResources bool) (*cobra.Command, error) {
 
 	if !initResources {
 		return cmd, nil
+	}
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
 
 	accountStore, err := config.LoadAccountStore()
@@ -91,10 +87,58 @@ func RootCommand(initResources bool) (*cobra.Command, error) {
 	ctx := context.Background()
 	ctx = api.WithAPIClient(ctx, client)
 	ctx = config.WithAccountStore(ctx, accountStore)
+	ctx = config.WithConfig(ctx, cfg)
 
 	cmd.SetContext(ctx)
 
 	return cmd, nil
+}
+
+func mainCommandPreRun(cmd *cobra.Command, args []string) error {
+	cfg := config.ConfigFromContext(cmd.Context())
+
+	// Skip init/update check for version and update commands
+	// Check both the command name and if it's one of these specific commands
+	cmdName := cmd.Name()
+	if cmdName == "version" || cmdName == "update" {
+		return nil
+	}
+
+	ensureRuntimeDirs(cfg)
+
+	// Check for updates asynchronously
+	if !cfg.DisableUpdateCheck {
+		versionpkg.CheckForUpdateAsync(func(release *versionpkg.GitHubRelease) {
+			logger.Warning("A new version is available: %s (current: %s)", release.TagName, versionpkg.Version)
+			logger.Info("Run 'pangolin update' to update to the latest version")
+			fmt.Println()
+		})
+	}
+
+	return nil
+}
+
+// Make sure all required directories exist once
+// before executing any subcommands.
+func ensureRuntimeDirs(cfg *config.Config) {
+	configDir, err := config.GetPangolinConfigDir()
+	if err != nil {
+		logger.Warning("failed to create pangolin configuration directory: %v", err)
+	} else {
+		err = os.MkdirAll(configDir, 0o755)
+		if err != nil {
+			logger.Warning("failed to create %s: %v", configDir, err)
+		}
+	}
+
+	if cfg.LogFile != "" {
+		logPathDirname := filepath.Dir(cfg.LogFile)
+
+		err = os.MkdirAll(logPathDirname, 0o755)
+		if err != nil {
+			logger.Warning("failed to create %s: %v", logPathDirname, err)
+		}
+	}
 }
 
 // Execute is called by main.go

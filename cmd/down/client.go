@@ -15,6 +15,8 @@ var ClientCmd = &cobra.Command{
 	Short: "Stop the client connection",
 	Long:  "Stop the currently running client connection",
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg := config.ConfigFromContext(cmd.Context())
+
 		// Get socket path from config or use default
 		client := olm.NewClient("")
 
@@ -23,9 +25,6 @@ var ClientCmd = &cobra.Command{
 			logger.Info("No client is currently running")
 			return
 		}
-
-		// Get log file path (same as up client)
-		logFile := config.GetDefaultLogPath()
 
 		// Check that the client was started by this CLI by verifying the version
 		status, err := client.GetStatus()
@@ -48,7 +47,7 @@ var ClientCmd = &cobra.Command{
 
 		// Show log preview until process stops
 		completed, err := tui.NewLogPreview(tui.LogPreviewConfig{
-			LogFile: logFile,
+			LogFile: cfg.LogFile,
 			Header:  "Shutting down client...",
 			ExitCondition: func(client *olm.Client, status *olm.StatusResponse) (bool, bool) {
 				// Exit when process is no longer running (socket doesn't exist)

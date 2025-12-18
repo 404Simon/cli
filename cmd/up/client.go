@@ -66,6 +66,7 @@ var ClientCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		apiClient := api.FromContext(cmd.Context())
 		accountStore := config.AccountStoreFromContext(cmd.Context())
+		cfg := config.ConfigFromContext(cmd.Context())
 
 		if runtime.GOOS == "windows" {
 			logger.Error("Windows is not supported")
@@ -149,7 +150,7 @@ var ClientCmd = &cobra.Command{
 		// Handle log file setup - if detached mode, always use log file
 		var logFile string
 		if !flagAttached {
-			logFile = config.GetDefaultLogPath()
+			logFile = cfg.LogFile
 		}
 
 		endpoint := flagEndpoint
@@ -426,7 +427,7 @@ var ClientCmd = &cobra.Command{
 
 		// Setup log file if specified
 		if logFile != "" {
-			if err := setupLogFile(logFile); err != nil {
+			if err := setupLogFile(cfg.LogFile); err != nil {
 				logger.Error("Error: failed to setup log file: %v", err)
 				os.Exit(1)
 			}
@@ -548,15 +549,10 @@ func init() {
 
 // setupLogFile sets up file logging with rotation
 func setupLogFile(logPath string) error {
-	// Create log directory if it doesn't exist
 	logDir := filepath.Dir(logPath)
-	err := os.MkdirAll(logDir, 0o755)
-	if err != nil {
-		return fmt.Errorf("failed to create log directory: %v", err)
-	}
 
 	// Rotate log file if needed
-	err = rotateLogFile(logDir, logPath)
+	err := rotateLogFile(logDir, logPath)
 	if err != nil {
 		// Log warning but continue
 		log.Printf("Warning: failed to rotate log file: %v", err)

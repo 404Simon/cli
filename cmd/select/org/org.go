@@ -21,6 +21,7 @@ var OrgCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		apiClient := api.FromContext(cmd.Context())
 		accountStore := config.AccountStoreFromContext(cmd.Context())
+		cfg := config.ConfigFromContext(cmd.Context())
 
 		activeAccount, err := accountStore.ActiveAccount()
 		if err != nil {
@@ -82,7 +83,7 @@ var OrgCmd = &cobra.Command{
 			currentStatus, err := olmClient.GetStatus()
 			if err == nil && currentStatus != nil && currentStatus.OrgID != selectedOrgID {
 				// Switch was sent, monitor the switch process
-				monitorOrgSwitch(selectedOrgID)
+				monitorOrgSwitch(cfg.LogFile, selectedOrgID)
 			} else {
 				// Already on the correct org or no status available
 				logger.Success("Successfully selected organization: %s", selectedOrgID)
@@ -95,10 +96,7 @@ var OrgCmd = &cobra.Command{
 }
 
 // monitorOrgSwitch monitors the organization switch process with log preview
-func monitorOrgSwitch(orgID string) {
-	// Get log file path
-	logFile := config.GetDefaultLogPath()
-
+func monitorOrgSwitch(logFile string, orgID string) {
 	// Show live log preview and status during switch
 	completed, err := tui.NewLogPreview(tui.LogPreviewConfig{
 		LogFile: logFile,

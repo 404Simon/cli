@@ -28,7 +28,7 @@ type UpdateCheckCache struct {
 func getCacheFilePath() (string, error) {
 	pangolinDir, err := config.GetPangolinConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get .pangolin directory: %w", err)
+		return "", fmt.Errorf("failed to get pangolin config directory: %w", err)
 	}
 	return filepath.Join(pangolinDir, UpdateCheckCacheFile), nil
 }
