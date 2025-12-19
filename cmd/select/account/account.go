@@ -67,7 +67,7 @@ var AccountCmd = &cobra.Command{
 		// Check if olmClient is running and if we need to shut it down
 		olmClient := olm.NewClient("")
 		if olmClient.IsRunning() {
-			logger.Info("Shutting down running OLM client")
+			logger.Info("Shutting down running client")
 			_, err := olmClient.Exit()
 			if err != nil {
 				logger.Warning("Failed to shut down OLM client: %s; you may need to do so manually.", err)
