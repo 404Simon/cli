@@ -13,15 +13,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/config"
+	"github.com/fosrl/cli/internal/logger"
 	"github.com/fosrl/cli/internal/olm"
-	"github.com/fosrl/cli/internal/secrets"
 	"github.com/fosrl/cli/internal/tui"
 	"github.com/fosrl/cli/internal/utils"
 	versionpkg "github.com/fosrl/cli/internal/version"
-	"github.com/fosrl/newt/logger"
+	newtLogger "github.com/fosrl/newt/logger"
 	olmpkg "github.com/fosrl/olm/olm"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -63,22 +64,24 @@ var ClientCmd = &cobra.Command{
 	Short: "Start a client connection",
 	Long:  "Bring up a client tunneled connection",
 	Run: func(cmd *cobra.Command, args []string) {
+		apiClient := api.FromContext(cmd.Context())
+		accountStore := config.AccountStoreFromContext(cmd.Context())
+		cfg := config.ConfigFromContext(cmd.Context())
 
 		if runtime.GOOS == "windows" {
-			utils.Error("Windows is not supported")
+			logger.Error("Windows is not supported")
 			os.Exit(1)
 		}
 
 		// Check if a client is already running
 		olmClient := olm.NewClient("")
 		if olmClient.IsRunning() {
-			utils.Info("A client is already running")
+			logger.Info("A client is already running")
 			os.Exit(1)
 		}
 
 		var olmID, olmSecret string
 		var credentialsFromKeyring bool
-		var userID string
 
 		if flagID != "" && flagSecret != "" {
 			// Use provided flags - no user session needed, continue even if not logged in
@@ -88,60 +91,58 @@ var ClientCmd = &cobra.Command{
 			credentialsFromKeyring = false
 		} else if flagID != "" || flagSecret != "" {
 			// If only one flag is provided, require both
-			utils.Error("Both --id and --secret must be provided together")
+			logger.Error("Both --id and --secret must be provided together")
 			os.Exit(1)
 		} else {
-			// No flags provided - assume user is logged in and use credentials from config
-			// Ensure user is logged in (this also verifies user exists via API)
-			if err := utils.EnsureLoggedIn(); err != nil {
-				utils.Error("%v", err)
-				os.Exit(1)
-			}
-
-			// Get userId from viper (required for OLM credentials lookup)
-			userID = viper.GetString("userId")
-			if userID == "" {
-				utils.Error("Please log in first. Run `pangolin login` to login")
+			activeAccount, err := accountStore.ActiveAccount()
+			if err != nil {
+				logger.Error("Error: %v. Run `pangolin login` to login", err)
 				os.Exit(1)
 			}
 
 			// Ensure OLM credentials exist and are valid
-			var err error
-			if err = utils.EnsureOlmCredentials(userID); err != nil {
-				utils.Error("Failed to ensure OLM credentials: %v", err)
+			newCredsGenerated, err := utils.EnsureOlmCredentials(apiClient, activeAccount)
+			if err != nil {
+				logger.Error("Failed to ensure OLM credentials: %v", err)
 				os.Exit(1)
 			}
 
-			// Get OLM credentials from config (they should exist after EnsureOlmCredentials)
-			olmID, olmSecret, err = secrets.GetOlmCredentials(userID)
+			if newCredsGenerated {
+				err := accountStore.Save()
+				if err != nil {
+					logger.Error("Failed to save accounts to store: %v", err)
+					os.Exit(1)
+				}
+			}
+
+			olmID = activeAccount.OlmCredentials.ID
+			olmSecret = activeAccount.OlmCredentials.Secret
+
 			if err != nil {
-				utils.Error("Failed to get OLM credentials: %v", err)
+				logger.Error("Failed to get OLM credentials: %v", err)
 				os.Exit(1)
 			}
 			credentialsFromKeyring = true
 		}
 
+		orgID := flagOrgID
+
 		// Get orgId from flag or viper (required for OLM config when using logged-in user)
-		var orgID string
 		if credentialsFromKeyring {
+			activeAccount, _ := accountStore.ActiveAccount()
+
 			// When using credentials from keyring, orgID is required
-			orgID = flagOrgID
 			if orgID == "" {
-				orgID = viper.GetString("orgId")
+				orgID = activeAccount.OrgID
 			}
+
 			if orgID == "" {
-				utils.Error("Please select an organization first. Run `pangolin select org` to select an organization or pass --org [id] to the command")
+				logger.Error("Please select an organization first. Run `pangolin select org` to select an organization or pass --org [id] to the command")
 				os.Exit(1)
 			}
-		} else {
-			// When using id/secret directly, orgID is optional (may come from credentials)
-			orgID = flagOrgID
-		}
 
-		// Ensure org access (only when using logged-in user, not when credentials come from flags)
-		if credentialsFromKeyring && userID != "" {
-			if err := utils.EnsureOrgAccess(orgID, userID); err != nil {
-				utils.Error("%v", err)
+			if err := utils.EnsureOrgAccess(apiClient, activeAccount); err != nil {
+				logger.Error("%v", err)
 				os.Exit(1)
 			}
 		}
@@ -149,7 +150,15 @@ var ClientCmd = &cobra.Command{
 		// Handle log file setup - if detached mode, always use log file
 		var logFile string
 		if !flagAttached {
-			logFile = utils.GetDefaultLogPath()
+			logFile = cfg.LogFile
+		}
+
+		endpoint := flagEndpoint
+		if endpoint == "" {
+			activeAccount, _ := accountStore.ActiveAccount()
+			if activeAccount != nil {
+				endpoint = activeAccount.Host
+			}
 		}
 
 		// Handle detached mode - subprocess self without --attach flag
@@ -158,7 +167,7 @@ var ClientCmd = &cobra.Command{
 		if !flagAttached && !isRunningAsRoot {
 			executable, err := os.Executable()
 			if err != nil {
-				utils.Error("Error: failed to get executable path: %v", err)
+				logger.Error("Error: failed to get executable path: %v", err)
 				os.Exit(1)
 			}
 
@@ -166,15 +175,7 @@ var ClientCmd = &cobra.Command{
 			cmdArgs := []string{"up", "client"}
 
 			// Add org flag (required for subprocess, which runs as root and won't have user's config)
-			// Use flag value if provided, otherwise use the resolved orgID
-			// Only add org flag if credentials came from keyring (not when id/secret are provided directly)
-			if credentialsFromKeyring {
-				if flagOrgID != "" {
-					cmdArgs = append(cmdArgs, "--org", flagOrgID)
-				} else {
-					cmdArgs = append(cmdArgs, "--org", orgID)
-				}
-			}
+			cmdArgs = append(cmdArgs, "--org", orgID)
 
 			// Add all flags that were set (except --attach)
 			// OLM credentials are always included (from flags, config, or newly created)
@@ -183,15 +184,8 @@ var ClientCmd = &cobra.Command{
 
 			// Always pass endpoint to subprocess (required, subprocess won't have user's config)
 			// Get endpoint from flag or hostname config (same logic as attached mode)
-			endpoint := flagEndpoint
 			if endpoint == "" {
-				// Check if hostname is actually set in config (not just using default)
-				if hostname := viper.GetString("hostname"); hostname != "" {
-					endpoint = hostname
-				}
-			}
-			if endpoint == "" {
-				utils.Error("Endpoint is required. Please login with a host or provide --endpoint flag")
+				logger.Error("Endpoint is required. Please login with a host or provide --endpoint flag")
 				os.Exit(1)
 			}
 			cmdArgs = append(cmdArgs, "--endpoint", endpoint)
@@ -271,20 +265,20 @@ var ClientCmd = &cobra.Command{
 				procCmd.Stdout = nil
 				procCmd.Stderr = os.Stderr
 			} else {
-				utils.Error("Windows is not supported for detached mode")
+				logger.Error("Windows is not supported for detached mode")
 				os.Exit(1)
 			}
 
 			// Start the process
 			if err := procCmd.Start(); err != nil {
-				utils.Error("Error: failed to start detached process: %v", err)
+				logger.Error("Error: failed to start detached process: %v", err)
 				os.Exit(1)
 			}
 
 			// Wait for sudo to complete (password prompt + subprocess start)
 			// The shell wrapper backgrounds the subprocess, so sudo exits immediately
 			if err := procCmd.Wait(); err != nil {
-				utils.Error("Error: failed to start subprocess: %v", err)
+				logger.Error("Error: failed to start subprocess: %v", err)
 				os.Exit(1)
 			}
 
@@ -320,17 +314,17 @@ var ClientCmd = &cobra.Command{
 				},
 			})
 			if err != nil {
-				utils.Error("Error: %v", err)
+				logger.Error("Error: %v", err)
 				os.Exit(1)
 			}
 
 			// Check if the process completed successfully or was killed
 			if !completed {
 				// User exited early - subprocess was killed
-				utils.Info("Client process killed")
+				logger.Info("Client process killed")
 			} else {
 				// Completed successfully
-				utils.Success("Client interface created successfully")
+				logger.Success("Client interface created successfully")
 			}
 			os.Exit(0)
 		}
@@ -375,22 +369,14 @@ var ClientCmd = &cobra.Command{
 			}
 			d, err := time.ParseDuration(durationStr)
 			if err != nil {
-				utils.Warning("Invalid duration format '%s', using default: %v", durationStr, defaultDuration)
+				logger.Warning("Invalid duration format '%s', using default: %v", durationStr, defaultDuration)
 				return defaultDuration
 			}
 			return d
 		}
 
-		// Get endpoint from flag or config - required
-		endpoint := flagEndpoint
 		if endpoint == "" {
-			// Check if hostname is actually set in config (not just using default)
-			if hostname := viper.GetString("hostname"); hostname != "" {
-				endpoint = hostname
-			}
-		}
-		if endpoint == "" {
-			utils.Error("Endpoint is required. Please provide --endpoint flag or set hostname in config")
+			logger.Error("Endpoint is required. Please provide --endpoint flag or set hostname in config")
 			os.Exit(1)
 		}
 
@@ -441,8 +427,8 @@ var ClientCmd = &cobra.Command{
 
 		// Setup log file if specified
 		if logFile != "" {
-			if err := setupLogFile(logFile); err != nil {
-				utils.Error("Error: failed to setup log file: %v", err)
+			if err := setupLogFile(cfg.LogFile); err != nil {
+				logger.Error("Error: failed to setup log file: %v", err)
 				os.Exit(1)
 			}
 		}
@@ -455,12 +441,13 @@ var ClientCmd = &cobra.Command{
 		credentialsFromKeyringEnv := os.Getenv("PANGOLIN_CREDENTIALS_FROM_KEYRING")
 		if credentialsFromKeyringEnv == "1" || credentialsFromKeyring {
 			// Credentials came from config, fetch userToken from secrets
-			token, err := secrets.GetSessionToken()
+			activeAccount, err := accountStore.ActiveAccount()
 			if err != nil {
-				utils.Warning("Failed to get session token: %v", err)
-			} else {
-				userToken = token
+				logger.Error("Failed to get session token: %v", err)
+				return
 			}
+
+			userToken = activeAccount.SessionToken
 		}
 
 		// Create context for signal handling and cleanup
@@ -477,17 +464,17 @@ var ClientCmd = &cobra.Command{
 			Version:    version,
 			Agent:      defaultAgent,
 			OnTerminated: func() {
-				utils.Info("Client process terminated")
+				logger.Info("Client process terminated")
 				stop()
 				os.Exit(0)
 			},
 			OnAuthError: func(statusCode int, message string) {
-				utils.Error("Authentication error: %d %s", statusCode, message)
+				logger.Error("Authentication error: %d %s", statusCode, message)
 				stop()
 				os.Exit(1)
 			},
 			OnExit: func() {
-				utils.Info("Client process exiting")
+				logger.Info("Client process exiting")
 				os.Exit(0)
 			},
 		}
@@ -517,8 +504,8 @@ var ClientCmd = &cobra.Command{
 		// This check is only for attached mode; in detached mode, the subprocess runs elevated
 		if runtime.GOOS != "windows" {
 			if os.Geteuid() != 0 {
-				utils.Error("This command requires elevated permissions for network interface creation.")
-				utils.Info("Please run with sudo or use detached mode (default) to run the subprocess elevated.")
+				logger.Error("This command requires elevated permissions for network interface creation.")
+				logger.Info("Please run with sudo or use detached mode (default) to run the subprocess elevated.")
 				os.Exit(1)
 			}
 		}
@@ -562,28 +549,23 @@ func init() {
 
 // setupLogFile sets up file logging with rotation
 func setupLogFile(logPath string) error {
-	// Create log directory if it doesn't exist
 	logDir := filepath.Dir(logPath)
-	err := os.MkdirAll(logDir, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create log directory: %v", err)
-	}
 
 	// Rotate log file if needed
-	err = rotateLogFile(logDir, logPath)
+	err := rotateLogFile(logDir, logPath)
 	if err != nil {
 		// Log warning but continue
 		log.Printf("Warning: failed to rotate log file: %v", err)
 	}
 
 	// Open log file for appending
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %v", err)
 	}
 
 	// Set the logger output
-	logger.GetLogger().SetOutput(file)
+	newtLogger.GetLogger().SetOutput(file)
 
 	// log.Printf("Logging to file: %s", logPath)
 	return nil

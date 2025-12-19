@@ -1,41 +1,44 @@
-package selectcmd
+package org
 
 import (
 	"fmt"
 
 	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/config"
+	"github.com/fosrl/cli/internal/logger"
 	"github.com/fosrl/cli/internal/olm"
 	"github.com/fosrl/cli/internal/tui"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var flagOrgID string
 
-var orgCmd = &cobra.Command{
+var OrgCmd = &cobra.Command{
 	Use:   "org",
 	Short: "Select an organization",
 	Long:  "List your organizations and select one to use",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Check if user is logged in
-		if err := utils.EnsureLoggedIn(); err != nil {
-			utils.Error("%v", err)
+		apiClient := api.FromContext(cmd.Context())
+		accountStore := config.AccountStoreFromContext(cmd.Context())
+		cfg := config.ConfigFromContext(cmd.Context())
+
+		activeAccount, err := accountStore.ActiveAccount()
+		if err != nil {
+			logger.Error("%v", err)
 			return
+
 		}
+		userID := activeAccount.UserID
 
-		// Get userId from config
-		userID := viper.GetString("userId")
-
-		var orgID string
-		var err error
+		var selectedOrgID string
 
 		// Check if --org-id flag is provided
 		if flagOrgID != "" {
 			// Validate that the org exists
-			orgsResp, err := api.GlobalClient.ListUserOrgs(userID)
+			orgsResp, err := apiClient.ListUserOrgs(userID)
 			if err != nil {
-				utils.Error("Failed to list organizations: %v", err)
+				logger.Error("Failed to list organizations: %v", err)
 				return
 			}
 
@@ -49,55 +52,51 @@ var orgCmd = &cobra.Command{
 			}
 
 			if !orgExists {
-				utils.Error("Organization '%s' not found or you don't have access to it", flagOrgID)
+				logger.Error("Organization '%s' not found or you don't have access to it", flagOrgID)
 				return
 			}
 
 			// Org exists, use it
-			orgID = flagOrgID
-
-			// Save to config
-			viper.Set("orgId", orgID)
-			if err := viper.WriteConfig(); err != nil {
-				utils.Error("Failed to save organization to config: %v", err)
-				return
-			}
+			selectedOrgID = flagOrgID
 		} else {
 			// No flag provided, use GUI selection
-			orgID, err = utils.SelectOrg(userID)
+			selectedOrgID, err = utils.SelectOrgForm(apiClient, userID)
 			if err != nil {
-				utils.Error("%v", err)
+				logger.Error("%v", err)
 				return
 			}
 		}
 
-		// Switch active client if running
-		utils.SwitchActiveClientOrg(orgID)
+		activeAccount.OrgID = selectedOrgID
+		if err := accountStore.Save(); err != nil {
+			logger.Error("Failed to save account to store: %v", err)
+			return
+		}
 
-		// Check if client is running and if we need to monitor a switch
-		client := olm.NewClient("")
-		if client.IsRunning() {
+		// Switch active client if running
+		utils.SwitchActiveClientOrg(selectedOrgID)
+
+		// Check if olmClient is running and if we need to monitor a switch
+		olmClient := olm.NewClient("")
+		if olmClient.IsRunning() {
 			// Get current status - if it doesn't match the new org, monitor the switch
-			currentStatus, err := client.GetStatus()
-			if err == nil && currentStatus != nil && currentStatus.OrgID != orgID {
+			currentStatus, err := olmClient.GetStatus()
+			if err == nil && currentStatus != nil && currentStatus.OrgID != selectedOrgID {
 				// Switch was sent, monitor the switch process
-				monitorOrgSwitch(orgID)
+				monitorOrgSwitch(cfg.LogFile, selectedOrgID)
 			} else {
 				// Already on the correct org or no status available
-				utils.Success("Successfully selected organization: %s", orgID)
+				logger.Success("Successfully selected organization: %s", selectedOrgID)
 			}
 		} else {
 			// Client not running, no switch needed
-			utils.Success("Successfully selected organization: %s", orgID)
+			logger.Success("Successfully selected organization: %s", selectedOrgID)
 		}
 	},
 }
 
 // monitorOrgSwitch monitors the organization switch process with log preview
-func monitorOrgSwitch(orgID string) {
-	// Get log file path
-	logFile := utils.GetDefaultLogPath()
-
+func monitorOrgSwitch(logFile string, orgID string) {
 	// Show live log preview and status during switch
 	completed, err := tui.NewLogPreview(tui.LogPreviewConfig{
 		LogFile: logFile,
@@ -127,13 +126,12 @@ func monitorOrgSwitch(orgID string) {
 
 	// Clear the TUI lines after completion
 	if completed {
-		utils.Success("Successfully switched organization to: %s", orgID)
+		logger.Success("Successfully switched organization to: %s", orgID)
 	} else if err != nil {
-		utils.Warning("Failed to monitor organization switch: %v", err)
+		logger.Warning("Failed to monitor organization switch: %v", err)
 	}
 }
 
 func init() {
-	orgCmd.Flags().StringVar(&flagOrgID, "org", "", "Organization ID to select")
-	SelectCmd.AddCommand(orgCmd)
+	OrgCmd.Flags().StringVar(&flagOrgID, "org", "", "Organization ID to select")
 }
