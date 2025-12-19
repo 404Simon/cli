@@ -31,8 +31,9 @@ import (
 // state when doing doc generation.
 func RootCommand(initResources bool) (*cobra.Command, error) {
 	cmd := &cobra.Command{
-		Use:   "pangolin",
-		Short: "Pangolin CLI",
+		Use:          "pangolin",
+		Short:        "Pangolin CLI",
+		SilenceUsage: true,
 		CompletionOptions: cobra.CompletionOptions{
 			HiddenDefaultCmd: true,
 		},

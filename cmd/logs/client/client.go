@@ -27,7 +27,9 @@ func ClientLogsCmd() *cobra.Command {
 		Short: "View client logs",
 		Long:  "View client logs. Use -f to follow log output.",
 		Run: func(cmd *cobra.Command, args []string) {
-			clientLogsMain(cmd, &opts)
+			if err := clientLogsMain(cmd, &opts); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -37,17 +39,17 @@ func ClientLogsCmd() *cobra.Command {
 	return cmd
 }
 
-func clientLogsMain(cmd *cobra.Command, opts *ClientLogsCmdOpts) {
+func clientLogsMain(cmd *cobra.Command, opts *ClientLogsCmdOpts) error {
 	cfg := config.ConfigFromContext(cmd.Context())
 
 	if opts.Follow {
 		// Follow the log file
 		if err := watchLogFile(cfg.LogFile, opts.Lines); err != nil {
 			logger.Error("Error: %v", err)
-			os.Exit(1)
+			return err
 		}
 
-		return
+		return nil
 	}
 
 	// Just print the current log file contents
@@ -55,15 +57,17 @@ func clientLogsMain(cmd *cobra.Command, opts *ClientLogsCmdOpts) {
 		// Show last N lines
 		if err := printLastLines(cfg.LogFile, opts.Lines); err != nil {
 			logger.Error("Error: %v", err)
-			os.Exit(1)
+			return err
 		}
 	} else {
 		// Show all lines
 		if err := printLogFile(cfg.LogFile); err != nil {
 			logger.Error("Error: %v", err)
-			os.Exit(1)
+			return err
 		}
 	}
+
+	return nil
 }
 
 // printLogFile prints the contents of the log file

@@ -1,7 +1,9 @@
 package account
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/huh"
 	"github.com/fosrl/cli/internal/config"
@@ -23,7 +25,9 @@ func AccountCmd() *cobra.Command {
 		Short: "Select an account",
 		Long:  "List your logged-in accounts and select active one",
 		Run: func(cmd *cobra.Command, args []string) {
-			accountMain(cmd, &opts)
+			if err := accountMain(cmd, &opts); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -33,12 +37,13 @@ func AccountCmd() *cobra.Command {
 	return cmd
 }
 
-func accountMain(cmd *cobra.Command, opts *AccountCmdOpts) {
+func accountMain(cmd *cobra.Command, opts *AccountCmdOpts) error {
 	accountStore := config.AccountStoreFromContext(cmd.Context())
 
 	if len(accountStore.Accounts) == 0 {
-		logger.Warning("Not logged in.")
-		return
+		err := errors.New("not logged in")
+		logger.Error("Error: %v", err)
+		return err
 	}
 
 	var selectedAccount *config.Account
@@ -58,15 +63,16 @@ func accountMain(cmd *cobra.Command, opts *AccountCmdOpts) {
 		}
 
 		if selectedAccount == nil {
-			logger.Error("No accounts found that match the search terms")
-			return
+			err := errors.New("no accounts found that match the search terms")
+			logger.Error("Error: %v", err)
+			return err
 		}
 	} else {
 		// No flag provided, use GUI selection if necessary
 		selected, err := selectAccountForm(accountStore.Accounts, opts.Host)
 		if err != nil {
-			logger.Error("Failed to select account: %v", err)
-			return
+			logger.Error("Error: failed to select account: %v", err)
+			return err
 		}
 
 		selectedAccount = selected
@@ -74,8 +80,8 @@ func accountMain(cmd *cobra.Command, opts *AccountCmdOpts) {
 
 	accountStore.ActiveUserID = selectedAccount.UserID
 	if err := accountStore.Save(); err != nil {
-		logger.Error("Failed to save account to store: %v", err)
-		return
+		logger.Error("Error: failed to save account to store: %v", err)
+		return err
 	}
 
 	// Check if olmClient is running and if we need to shut it down
@@ -90,6 +96,8 @@ func accountMain(cmd *cobra.Command, opts *AccountCmdOpts) {
 
 	selectedAccountStr := fmt.Sprintf("%s @ %s", selectedAccount.Email, selectedAccount.Host)
 	logger.Success("Successfully selected account: %s", selectedAccountStr)
+
+	return nil
 }
 
 // selectAccountForm lists organizations for a user and prompts them to select one.

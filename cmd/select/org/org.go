@@ -2,6 +2,7 @@ package org
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/config"
@@ -24,7 +25,9 @@ func OrgCmd() *cobra.Command {
 		Short: "Select an organization",
 		Long:  "List your organizations and select one to use",
 		Run: func(cmd *cobra.Command, args []string) {
-			orgMain(cmd, &opts)
+			if err := orgMain(cmd, &opts); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -33,7 +36,7 @@ func OrgCmd() *cobra.Command {
 	return cmd
 }
 
-func orgMain(cmd *cobra.Command, opts *OrgCmdOpts) {
+func orgMain(cmd *cobra.Command, opts *OrgCmdOpts) error {
 	apiClient := api.FromContext(cmd.Context())
 	accountStore := config.AccountStoreFromContext(cmd.Context())
 	cfg := config.ConfigFromContext(cmd.Context())
@@ -41,7 +44,7 @@ func orgMain(cmd *cobra.Command, opts *OrgCmdOpts) {
 	activeAccount, err := accountStore.ActiveAccount()
 	if err != nil {
 		logger.Error("%v", err)
-		return
+		return err
 
 	}
 	userID := activeAccount.UserID
@@ -54,7 +57,7 @@ func orgMain(cmd *cobra.Command, opts *OrgCmdOpts) {
 		orgsResp, err := apiClient.ListUserOrgs(userID)
 		if err != nil {
 			logger.Error("Failed to list organizations: %v", err)
-			return
+			return err
 		}
 
 		// Check if the provided orgId exists in the user's organizations
@@ -67,8 +70,9 @@ func orgMain(cmd *cobra.Command, opts *OrgCmdOpts) {
 		}
 
 		if !orgExists {
-			logger.Error("Organization '%s' not found or you don't have access to it", opts.OrgID)
-			return
+			err := fmt.Errorf("organization '%s' not found or you don't have access to it", opts.OrgID)
+			logger.Error("Error: %v", err)
+			return err
 		}
 
 		// Org exists, use it
@@ -78,14 +82,14 @@ func orgMain(cmd *cobra.Command, opts *OrgCmdOpts) {
 		selectedOrgID, err = utils.SelectOrgForm(apiClient, userID)
 		if err != nil {
 			logger.Error("%v", err)
-			return
+			return err
 		}
 	}
 
 	activeAccount.OrgID = selectedOrgID
 	if err := accountStore.Save(); err != nil {
 		logger.Error("Failed to save account to store: %v", err)
-		return
+		return err
 	}
 
 	// Switch active client if running
@@ -107,6 +111,8 @@ func orgMain(cmd *cobra.Command, opts *OrgCmdOpts) {
 		// Client not running, no switch needed
 		logger.Success("Successfully selected organization: %s", selectedOrgID)
 	}
+
+	return nil
 }
 
 // monitorOrgSwitch monitors the organization switch process with log preview

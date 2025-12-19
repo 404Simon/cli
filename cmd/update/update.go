@@ -14,14 +14,16 @@ func UpdateCmd() *cobra.Command {
 		Short: "Update Pangolin CLI to the latest version",
 		Long:  "Update Pangolin CLI to the latest version by downloading and running the installation script",
 		Run: func(cmd *cobra.Command, args []string) {
-			updateMain()
+			if err := updateMain(); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
 	return cmd
 }
 
-func updateMain() {
+func updateMain() error {
 	logger.Info("Updating Pangolin CLI...")
 
 	// Execute: curl -fsSL https://pangolin.net/get-cli.sh | bash
@@ -32,8 +34,10 @@ func updateMain() {
 
 	if err := updateCmd.Run(); err != nil {
 		logger.Error("Failed to update Pangolin CLI: %v", err)
-		os.Exit(1)
+		return err
 	}
 
 	logger.Success("Pangolin CLI updated successfully!")
+
+	return nil
 }

@@ -2,6 +2,7 @@ package status
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/fosrl/cli/internal/api"
 	"github.com/fosrl/cli/internal/config"
@@ -15,14 +16,16 @@ func StatusCmd() *cobra.Command {
 		Short: "Check authentication status",
 		Long:  "Check if you are logged in and view your account information",
 		Run: func(cmd *cobra.Command, args []string) {
-			statusMain(cmd)
+			if err := statusMain(cmd); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
 	return cmd
 }
 
-func statusMain(cmd *cobra.Command) {
+func statusMain(cmd *cobra.Command) error {
 	apiClient := api.FromContext(cmd.Context())
 	accountStore := config.AccountStoreFromContext(cmd.Context())
 
@@ -30,21 +33,21 @@ func statusMain(cmd *cobra.Command) {
 	if err != nil {
 		logger.Info("Status: %s", err)
 		logger.Info("Run 'pangolin login' to authenticate")
-		return
+		return err
 	}
 
 	// User info exists in config, try to get user from API
 	user, err := apiClient.GetUser()
 	if err != nil {
 		// Unable to get user - consider logged out (previously logged in but now not)
-		logger.Info("Status: Logged out: %v", err)
+		logger.Info("Status: logged out: %v", err)
 		logger.Info("Your session has expired or is invalid")
 		logger.Info("Run 'pangolin login' to authenticate again")
-		return
+		return err
 	}
 
 	// Successfully got user - logged in
-	logger.Success("Status: Logged in")
+	logger.Success("Status: logged in")
 	// Show hostname if available
 	logger.Info("@ %s", account.Host)
 	fmt.Println()
@@ -65,4 +68,6 @@ func statusMain(cmd *cobra.Command) {
 
 	// Display organization information
 	logger.Info("Org ID: %s", account.OrgID)
+
+	return nil
 }

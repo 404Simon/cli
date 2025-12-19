@@ -24,7 +24,9 @@ func ClientStatusCmd() *cobra.Command {
 		Short: "Show client status",
 		Long:  "Display current client connection status and peer information",
 		Run: func(cmd *cobra.Command, args []string) {
-			clientStatusMain(&opts)
+			if err := clientStatusMain(&opts); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -33,39 +35,42 @@ func ClientStatusCmd() *cobra.Command {
 	return cmd
 }
 
-func clientStatusMain(opts *ClientStatusCmdOpts) {
+func clientStatusMain(opts *ClientStatusCmdOpts) error {
 	// Get socket path from config or use default
 	client := olm.NewClient("")
 
 	// Check if client is running
 	if !client.IsRunning() {
 		logger.Info("No client is currently running")
-		return
+		return nil
 	}
 
 	// Get status
 	status, err := client.GetStatus()
 	if err != nil {
 		logger.Error("Error: %v", err)
-		os.Exit(1)
+		return err
 	}
 
 	// Print raw JSON if flag is set, otherwise print formatted table
 	if opts.JSON {
-		printJSON(status)
+		return printJSON(status)
 	} else {
 		printStatusTable(status)
 	}
+
+	return nil
 }
 
 // printJSON prints the status response as JSON
-func printJSON(status *olm.StatusResponse) {
+func printJSON(status *olm.StatusResponse) error {
 	jsonData, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
 		logger.Error("Error marshaling JSON: %v", err)
-		os.Exit(1)
+		return err
 	}
 	fmt.Println(string(jsonData))
+	return nil
 }
 
 // printStatusTable prints the status information in a table format

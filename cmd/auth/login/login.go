@@ -2,6 +2,7 @@ package login
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -163,14 +164,16 @@ func LoginCmd() *cobra.Command {
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			loginMain(cmd, &opts)
+			if err := loginMain(cmd, &opts); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
 	return cmd
 }
 
-func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
+func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) error {
 	apiClient := api.FromContext(cmd.Context())
 	accountStore := config.AccountStoreFromContext(cmd.Context())
 
@@ -195,7 +198,7 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
 
 		if err := form.Run(); err != nil {
 			logger.Error("Error: %v", err)
-			return
+			return err
 		}
 
 		// If self-hosted, prompt for hostname
@@ -211,7 +214,7 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
 
 			if err := hostnameForm.Run(); err != nil {
 				logger.Error("Error: %v", err)
-				return
+				return err
 			}
 		} else {
 			// For cloud, set the default hostname
@@ -231,12 +234,13 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
 	sessionToken, err := loginWithWeb(hostname)
 	if err != nil {
 		logger.Error("%v", err)
-		return
+		return err
 	}
 
 	if sessionToken == "" {
-		logger.Error("Login appeared successful but no session token was received.")
-		return
+		err := errors.New("login appeared successful but no session token was received.")
+		logger.Error("Error: %v", err)
+		return err
 	}
 
 	// Update the global API client (always initialized)
@@ -253,12 +257,12 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
 	user, err = apiClient.GetUser()
 	if err != nil {
 		logger.Error("Failed to get user information: %v", err)
-		return // FIXME: handle errors properly with exit codes!
+		return err
 	}
 
 	if _, exists := accountStore.Accounts[user.UserID]; exists {
 		logger.Warning("Already logged in as this user; no action needed")
-		return
+		return nil
 	}
 
 	// Ensure OLM credentials exist and are valid
@@ -267,13 +271,13 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
 	orgID, err := utils.SelectOrgForm(apiClient, userID)
 	if err != nil {
 		logger.Error("Failed to select organization: %v", err)
-		return
+		return err
 	}
 
 	newOlmCreds, err := apiClient.CreateOlm(userID, utils.GetDeviceName())
 	if err != nil {
 		logger.Error("Failed to obtain olm credentials: %v", err)
-		return
+		return err
 	}
 
 	newAccount := config.Account{
@@ -295,7 +299,7 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
 	if err != nil {
 		logger.Error("Failed to save account store: %s", err)
 		logger.Warning("You may not be able to login properly until this is saved.")
-		return
+		return err
 	}
 
 	// List and select organization
@@ -315,4 +319,6 @@ func loginMain(cmd *cobra.Command, opts *LoginCmdOpts) {
 			logger.Success("Logged in as %s", displayName)
 		}
 	}
+
+	return nil
 }

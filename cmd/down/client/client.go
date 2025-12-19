@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"os"
 
 	"github.com/fosrl/cli/internal/config"
@@ -15,13 +16,17 @@ func ClientDownCmd() *cobra.Command {
 		Use:   "client",
 		Short: "Stop the client connection",
 		Long:  "Stop the currently running client connection",
-		Run:   clientDownMain,
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := clientDownMain(cmd); err != nil {
+				os.Exit(1)
+			}
+		},
 	}
 
 	return cmd
 }
 
-func clientDownMain(cmd *cobra.Command, args []string) {
+func clientDownMain(cmd *cobra.Command) error {
 	cfg := config.ConfigFromContext(cmd.Context())
 
 	// Get socket path from config or use default
@@ -29,27 +34,29 @@ func clientDownMain(cmd *cobra.Command, args []string) {
 
 	// Check if client is running
 	if !client.IsRunning() {
-		logger.Info("No client is currently running")
-		return
+		err := errors.New("no client is currently running")
+		logger.Info("Error: %v", err)
+		return err
 	}
 
 	// Check that the client was started by this CLI by verifying the version
 	status, err := client.GetStatus()
 	if err != nil {
 		logger.Error("Failed to get client status: %v", err)
-		os.Exit(1)
+		return err
 	}
+
 	if status.Agent != olm.AgentName {
 		logger.Error("Client was not started by Pangolin CLI (version: %s)", status.Version)
 		logger.Info("Only clients started by this CLI can be stopped using this command")
-		os.Exit(1)
+		return err
 	}
 
 	// Send exit signal
 	exitResp, err := client.Exit()
 	if err != nil {
 		logger.Error("Error: %v", err)
-		os.Exit(1)
+		return err
 	}
 
 	// Show log preview until process stops
@@ -72,7 +79,7 @@ func clientDownMain(cmd *cobra.Command, args []string) {
 	})
 	if err != nil {
 		logger.Error("Error: %v", err)
-		os.Exit(1)
+		return err
 	}
 
 	if completed {
@@ -80,4 +87,6 @@ func clientDownMain(cmd *cobra.Command, args []string) {
 	} else {
 		logger.Info("Client shutdown initiated: %s", exitResp.Status)
 	}
+
+	return nil
 }

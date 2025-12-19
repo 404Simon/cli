@@ -1,6 +1,8 @@
 package logout
 
 import (
+	"errors"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -17,14 +19,16 @@ func LogoutCmd() *cobra.Command {
 		Short: "Logout from Pangolin",
 		Long:  "Logout and clear your session",
 		Run: func(cmd *cobra.Command, args []string) {
-			logoutMain(cmd)
+			if err := logoutMain(cmd); err != nil {
+				os.Exit(1)
+			}
 		},
 	}
 
 	return cmd
 }
 
-func logoutMain(cmd *cobra.Command) {
+func logoutMain(cmd *cobra.Command) error {
 	apiClient := api.FromContext(cmd.Context())
 
 	// Check if client is running before logout
@@ -50,12 +54,13 @@ func logoutMain(cmd *cobra.Command) {
 
 			if err := confirmForm.Run(); err != nil {
 				logger.Error("Error: %v", err)
-				return
+				return err
 			}
 
 			if !confirm {
-				logger.Info("Logout cancelled")
-				return
+				err := errors.New("logout cancelled")
+				logger.Info("%v", err)
+				return err
 			}
 
 			// Kill the client without showing TUI
@@ -83,12 +88,12 @@ func logoutMain(cmd *cobra.Command) {
 	accountStore, err := config.LoadAccountStore()
 	if err != nil {
 		logger.Error("Failed to load account store: %s", err)
-		return
+		return err
 	}
 
 	if accountStore.ActiveUserID == "" {
 		logger.Success("Already logged out!")
-		return
+		return nil
 	}
 
 	// Try to logout from server (client is always initialized)
@@ -100,24 +105,23 @@ func logoutMain(cmd *cobra.Command) {
 	deletedAccount := accountStore.Accounts[accountStore.ActiveUserID]
 	delete(accountStore.Accounts, accountStore.ActiveUserID)
 
-	// If there are still other accounts, then we need to set the active key for it.
+	// If there are still other accounts, then we need to set the active key again.
+	// Automatically set next active user ID to the first account found.
 	if nextUserID, ok := anyKey(accountStore.Accounts); ok {
 		accountStore.ActiveUserID = nextUserID
-
-		// TODO: perform automatic select of account when required
 	} else {
 		accountStore.ActiveUserID = ""
 	}
 
-	// Automatically set next active user ID to the first account found.
-
 	if err := accountStore.Save(); err != nil {
 		logger.Error("Failed to save account store: %v", err)
-		return
+		return err
 	}
 
 	// Print logout message with account name
 	logger.Success("Logged out of Pangolin account %s", deletedAccount.Email)
+
+	return nil
 }
 
 func anyKey[K comparable, V any](m map[K]V) (K, bool) {
