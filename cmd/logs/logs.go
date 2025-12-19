@@ -4,9 +4,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var LogsCmd = &cobra.Command{
-	Use:   "logs",
-	Short: "View client logs",
-	Long:  "View and follow client logs",
-}
+func LogsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logs",
+		Short: "View client logs",
+		Long:  "View and follow client logs",
+	}
 
+	cmd.AddCommand(ClientLogsCmd())
+
+	return cmd
+}

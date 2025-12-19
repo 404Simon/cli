@@ -14,48 +14,56 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	flagFollow bool
-	flagLines  int
-)
-
-var clientLogsCmd = &cobra.Command{
-	Use:   "client",
-	Short: "View client logs",
-	Long:  "View client logs. Use -f to follow log output.",
-	Run: func(cmd *cobra.Command, args []string) {
-		cfg := config.ConfigFromContext(cmd.Context())
-
-		if flagFollow {
-			// Follow the log file
-			if err := watchLogFile(cfg.LogFile, flagLines); err != nil {
-				logger.Error("Error: %v", err)
-				os.Exit(1)
-			}
-		} else {
-			// Just print the current log file contents
-			if flagLines > 0 {
-				// Show last N lines
-				if err := printLastLines(cfg.LogFile, flagLines); err != nil {
-					logger.Error("Error: %v", err)
-					os.Exit(1)
-				}
-			} else {
-				// Show all lines
-				if err := printLogFile(cfg.LogFile); err != nil {
-					logger.Error("Error: %v", err)
-					os.Exit(1)
-				}
-			}
-		}
-	},
+type ClientLogsCmdOpts struct {
+	Follow bool
+	Lines  int
 }
 
-func init() {
-	clientLogsCmd.Flags().BoolVarP(&flagFollow, "follow", "f", false, "Follow log output (like tail -f)")
-	clientLogsCmd.Flags().IntVarP(&flagLines, "lines", "n", 0, "Number of lines to show (0 = all lines, only used with -f to show lines before following)")
+func ClientLogsCmd() *cobra.Command {
+	opts := ClientLogsCmdOpts{}
 
-	LogsCmd.AddCommand(clientLogsCmd)
+	cmd := &cobra.Command{
+		Use:   "client",
+		Short: "View client logs",
+		Long:  "View client logs. Use -f to follow log output.",
+		Run: func(cmd *cobra.Command, args []string) {
+			clientLogsMain(cmd, &opts)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&opts.Follow, "follow", "f", false, "Follow log output (like tail -f)")
+	cmd.Flags().IntVarP(&opts.Lines, "lines", "n", 0, "Number of lines to show (0 = all lines, only used with -f to show lines before following)")
+
+	return cmd
+}
+
+func clientLogsMain(cmd *cobra.Command, opts *ClientLogsCmdOpts) {
+	cfg := config.ConfigFromContext(cmd.Context())
+
+	if opts.Follow {
+		// Follow the log file
+		if err := watchLogFile(cfg.LogFile, opts.Lines); err != nil {
+			logger.Error("Error: %v", err)
+			os.Exit(1)
+		}
+
+		return
+	}
+
+	// Just print the current log file contents
+	if opts.Lines > 0 {
+		// Show last N lines
+		if err := printLastLines(cfg.LogFile, opts.Lines); err != nil {
+			logger.Error("Error: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		// Show all lines
+		if err := printLogFile(cfg.LogFile); err != nil {
+			logger.Error("Error: %v", err)
+			os.Exit(1)
+		}
+	}
 }
 
 // printLogFile prints the contents of the log file

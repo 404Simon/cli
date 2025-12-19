@@ -12,45 +12,50 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var flagJSON bool
-
-var ClientCmd = &cobra.Command{
-	Use:   "client",
-	Short: "Show client status",
-	Long:  "Display current client connection status and peer information",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Get socket path from config or use default
-		client := olm.NewClient("")
-
-		// Check if client is running
-		if !client.IsRunning() {
-			logger.Info("No client is currently running")
-			return
-		}
-
-		// Get status
-		status, err := client.GetStatus()
-		if err != nil {
-			logger.Error("Error: %v", err)
-			os.Exit(1)
-		}
-
-		// Print raw JSON if flag is set, otherwise print formatted table
-		if flagJSON {
-			printJSON(status)
-		} else {
-			printStatusTable(status)
-		}
-	},
+type ClientStatusCmdOpts = struct {
+	JSON bool
 }
 
-// addStatusClientFlags adds all status client flags to the given command
-func addStatusClientFlags(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&flagJSON, "json", false, "Print raw JSON response")
+func ClientStatusCmd() *cobra.Command {
+	opts := ClientStatusCmdOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "client",
+		Short: "Show client status",
+		Long:  "Display current client connection status and peer information",
+		Run: func(cmd *cobra.Command, args []string) {
+			clientStatusMain(&opts)
+		},
+	}
+
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Print raw JSON response")
+
+	return cmd
 }
 
-func init() {
-	addStatusClientFlags(ClientCmd)
+func clientStatusMain(opts *ClientStatusCmdOpts) {
+	// Get socket path from config or use default
+	client := olm.NewClient("")
+
+	// Check if client is running
+	if !client.IsRunning() {
+		logger.Info("No client is currently running")
+		return
+	}
+
+	// Get status
+	status, err := client.GetStatus()
+	if err != nil {
+		logger.Error("Error: %v", err)
+		os.Exit(1)
+	}
+
+	// Print raw JSON if flag is set, otherwise print formatted table
+	if opts.JSON {
+		printJSON(status)
+	} else {
+		printStatusTable(status)
+	}
 }
 
 // printJSON prints the status response as JSON

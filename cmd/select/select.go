@@ -6,13 +6,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var SelectCmd = &cobra.Command{
-	Use:   "select",
-	Short: "Select objects to work with",
-	Long:  "Select objects to work with",
-}
+func SelectCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "select",
+		Short: "Select account information to use",
+		Long:  "Select account information to use",
+	}
 
-func init() {
-	SelectCmd.AddCommand(account.AccountCmd)
-	SelectCmd.AddCommand(org.OrgCmd)
+	cmd.AddCommand(account.AccountCmd())
+	cmd.AddCommand(org.OrgCmd())
+
+	return cmd
 }
