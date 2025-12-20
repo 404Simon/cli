@@ -31,24 +31,25 @@ import (
 // state when doing doc generation.
 func RootCommand(initResources bool) (*cobra.Command, error) {
 	cmd := &cobra.Command{
-		Use:   "pangolin",
-		Short: "Pangolin CLI",
+		Use:          "pangolin",
+		Short:        "Pangolin CLI",
+		SilenceUsage: true,
 		CompletionOptions: cobra.CompletionOptions{
 			HiddenDefaultCmd: true,
 		},
 		PersistentPreRunE: mainCommandPreRun,
 	}
 
-	cmd.AddCommand(auth.AuthCmd)
-	cmd.AddCommand(selectcmd.SelectCmd)
-	cmd.AddCommand(up.UpCmd)
-	cmd.AddCommand(down.DownCmd)
-	cmd.AddCommand(logs.LogsCmd)
-	cmd.AddCommand(status.StatusCmd)
-	cmd.AddCommand(update.UpdateCmd)
-	cmd.AddCommand(version.VersionCmd)
-	cmd.AddCommand(login.LoginCmd)
-	cmd.AddCommand(logout.LogoutCmd)
+	cmd.AddCommand(auth.AuthCommand())
+	cmd.AddCommand(selectcmd.SelectCmd())
+	cmd.AddCommand(up.UpCmd())
+	cmd.AddCommand(down.DownCmd())
+	cmd.AddCommand(logs.LogsCmd())
+	cmd.AddCommand(status.StatusCmd())
+	cmd.AddCommand(update.UpdateCmd())
+	cmd.AddCommand(version.VersionCmd())
+	cmd.AddCommand(login.LoginCmd())
+	cmd.AddCommand(logout.LogoutCmd())
 
 	if !initResources {
 		return cmd, nil

@@ -7,14 +7,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var AuthCmd = &cobra.Command{
-	Use:   "auth",
-	Short: "Authentication commands",
-	Long:  "Manage authentication and sessions",
-}
+func AuthCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "auth",
+		Short: "Authentication commands",
+		Long:  "Manage authentication and sessions",
+	}
 
-func init() {
-	AuthCmd.AddCommand(login.LoginCmd)
-	AuthCmd.AddCommand(logout.LogoutCmd)
-	AuthCmd.AddCommand(status.StatusCmd)
+	cmd.AddCommand(login.LoginCmd())
+	cmd.AddCommand(logout.LogoutCmd())
+	cmd.AddCommand(status.StatusCmd())
+
+	return cmd
 }
