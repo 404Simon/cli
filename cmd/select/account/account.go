@@ -34,6 +34,9 @@ func AccountCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.Account, "account", "a", "", "Account to select")
 	cmd.Flags().StringVar(&opts.Host, "host", "", "Pangolin host where account is located")
 
+	_ = cmd.RegisterFlagCompletionFunc("account", completeAccountFlag)
+	_ = cmd.RegisterFlagCompletionFunc("host", completeHostFlag)
+
 	return cmd
 }
 
