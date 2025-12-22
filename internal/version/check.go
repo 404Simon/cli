@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -121,11 +120,6 @@ func CheckForUpdate() (*GitHubRelease, error) {
 // It waits a short time for the check to complete so the message is shown even for fast commands.
 // It respects the cache interval and only checks once per day.
 func CheckForUpdateAsync(showMessage func(*GitHubRelease)) {
-	// Check if update checking is disabled in config
-	if viper.GetBool("disable_update_check") {
-		return
-	}
-
 	// First, check if we have cached info that shows an update
 	if cachedRelease, ok := getCachedUpdateInfo(); ok {
 		showMessage(cachedRelease)

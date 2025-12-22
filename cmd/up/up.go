@@ -1,35 +1,23 @@
 package up
 
 import (
-	"strings"
-
+	"github.com/fosrl/cli/cmd/up/client"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
-var UpCmd = &cobra.Command{
-	Use:   "up",
-	Short: "Start a client",
-	Long:  "Bring up a client connection",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Default to client subcommand if no subcommand is provided
-		// This makes "pangolin up" equivalent to "pangolin up client"
-		cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-			if cmd.Flags().Changed(flag.Name) {
-				// Ensure stringSlice flags are passed without the bracketed representation
-				if flag.Value.Type() == "stringSlice" {
-					if vals, err := cmd.Flags().GetStringSlice(flag.Name); err == nil {
-						ClientCmd.Flags().Set(flag.Name, strings.Join(vals, ","))
-						return
-					}
-				}
-				ClientCmd.Flags().Set(flag.Name, flag.Value.String())
-			}
-		})
-		ClientCmd.Run(ClientCmd, args)
-	},
-}
+func UpCmd() *cobra.Command {
+	// If no subcommand is specified, run the `client`
+	// subcommand by default.
+	cmd := client.ClientUpCmd()
 
-func init() {
-	addClientFlags(UpCmd)
+	cmd.Use = "up"
+	cmd.Short = "Start a connection"
+	cmd.Long = `Bring up a connection.
+
+If ran with no subcommand, 'client' is passed.
+`
+
+	cmd.AddCommand(client.ClientUpCmd())
+
+	return cmd
 }

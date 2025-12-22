@@ -1,4 +1,4 @@
-package status
+package client
 
 import (
 	"encoding/json"
@@ -6,62 +6,71 @@ import (
 	"os"
 	"time"
 
+	"github.com/fosrl/cli/internal/logger"
 	"github.com/fosrl/cli/internal/olm"
 	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
 )
 
-var (
-	flagJSON bool
-)
-
-var ClientCmd = &cobra.Command{
-	Use:   "client",
-	Short: "Show client status",
-	Long:  "Display current client connection status and peer information",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Get socket path from config or use default
-		client := olm.NewClient("")
-
-		// Check if client is running
-		if !client.IsRunning() {
-			utils.Info("No client is currently running")
-			return
-		}
-
-		// Get status
-		status, err := client.GetStatus()
-		if err != nil {
-			utils.Error("Error: %v", err)
-			os.Exit(1)
-		}
-
-		// Print raw JSON if flag is set, otherwise print formatted table
-		if flagJSON {
-			printJSON(status)
-		} else {
-			printStatusTable(status)
-		}
-	},
+type ClientStatusCmdOpts = struct {
+	JSON bool
 }
 
-// addStatusClientFlags adds all status client flags to the given command
-func addStatusClientFlags(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&flagJSON, "json", false, "Print raw JSON response")
+func ClientStatusCmd() *cobra.Command {
+	opts := ClientStatusCmdOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "client",
+		Short: "Show client status",
+		Long:  "Display current client connection status and peer information",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := clientStatusMain(&opts); err != nil {
+				os.Exit(1)
+			}
+		},
+	}
+
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Print raw JSON response")
+
+	return cmd
 }
 
-func init() {
-	addStatusClientFlags(ClientCmd)
+func clientStatusMain(opts *ClientStatusCmdOpts) error {
+	// Get socket path from config or use default
+	client := olm.NewClient("")
+
+	// Check if client is running
+	if !client.IsRunning() {
+		logger.Info("No client is currently running")
+		return nil
+	}
+
+	// Get status
+	status, err := client.GetStatus()
+	if err != nil {
+		logger.Error("Error: %v", err)
+		return err
+	}
+
+	// Print raw JSON if flag is set, otherwise print formatted table
+	if opts.JSON {
+		return printJSON(status)
+	} else {
+		printStatusTable(status)
+	}
+
+	return nil
 }
 
 // printJSON prints the status response as JSON
-func printJSON(status *olm.StatusResponse) {
+func printJSON(status *olm.StatusResponse) error {
 	jsonData, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
-		utils.Error("Error marshaling JSON: %v", err)
-		os.Exit(1)
+		logger.Error("Error marshaling JSON: %v", err)
+		return err
 	}
 	fmt.Println(string(jsonData))
+	return nil
 }
 
 // printStatusTable prints the status information in a table format

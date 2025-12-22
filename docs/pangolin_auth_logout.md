@@ -1,19 +1,19 @@
-## pangolin auth status
+## pangolin auth logout
 
-Check authentication status
+Logout from Pangolin
 
 ### Synopsis
 
-Check if you are logged in and view your account information
+Logout and clear your session
 
 ```
-pangolin auth status [flags]
+pangolin auth logout [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for status
+  -h, --help   help for logout
 ```
 
 ### SEE ALSO

@@ -1,129 +1,133 @@
 package logout
 
 import (
+	"errors"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/config"
+	"github.com/fosrl/cli/internal/logger"
 	"github.com/fosrl/cli/internal/olm"
-	"github.com/fosrl/cli/internal/secrets"
-	"github.com/fosrl/cli/internal/utils"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-var LogoutCmd = &cobra.Command{
-	Use:   "logout",
-	Short: "Logout from Pangolin",
-	Long:  "Logout and clear your session",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Check if client is running before logout
-		olmClient := olm.NewClient("")
-		if olmClient.IsRunning() {
-			// Check that the client was started by this CLI by verifying the version
-			status, err := olmClient.GetStatus()
-			if err != nil {
-				utils.Warning("Failed to get client status: %v", err)
-				// Continue with logout even if we can't check version
-			} else if status.Agent == olm.AgentName {
-				// Only prompt and stop if client was started by this CLI
-				// Prompt user to confirm they want to disconnect the client
-				var confirm bool
-				confirmForm := huh.NewForm(
-					huh.NewGroup(
-						huh.NewConfirm().
-							Title("A client is currently running. Logging out will disconnect it.").
-							Description("Do you want to continue?").
-							Value(&confirm),
-					),
-				)
-
-				if err := confirmForm.Run(); err != nil {
-					utils.Error("Error: %v", err)
-					return
-				}
-
-				if !confirm {
-					utils.Info("Logout cancelled")
-					return
-				}
-
-				// Kill the client without showing TUI
-				_, err := olmClient.Exit()
-				if err != nil {
-					utils.Warning("Failed to send exit signal to client: %v", err)
-				} else {
-					// Wait for client to stop (poll until socket is gone)
-					maxWait := 10 * time.Second
-					pollInterval := 200 * time.Millisecond
-					elapsed := time.Duration(0)
-					for olmClient.IsRunning() && elapsed < maxWait {
-						time.Sleep(pollInterval)
-						elapsed += pollInterval
-					}
-					if olmClient.IsRunning() {
-						utils.Warning("Client did not stop within timeout")
-					}
-				}
+func LogoutCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logout",
+		Short: "Logout from Pangolin",
+		Long:  "Logout and clear your session",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := logoutMain(cmd); err != nil {
+				os.Exit(1)
 			}
-			// If version doesn't match, skip client shutdown and continue with logout
-		}
+		},
+	}
 
-		// Check if there's an active session in the key store
-		_, err := secrets.GetSessionToken()
+	return cmd
+}
+
+func logoutMain(cmd *cobra.Command) error {
+	apiClient := api.FromContext(cmd.Context())
+
+	// Check if client is running before logout
+	olmClient := olm.NewClient("")
+	if olmClient.IsRunning() {
+		// Check that the client was started by this CLI by verifying the version
+		status, err := olmClient.GetStatus()
 		if err != nil {
-			// No session found - user is already logged out
-			utils.Success("Already logged out!")
-			return
-		}
+			logger.Warning("Failed to get client status: %v", err)
+			// Continue with logout even if we can't check version
+		} else if status.Agent == olm.AgentName {
+			// Only prompt and stop if client was started by this CLI
+			// Prompt user to confirm they want to disconnect the client
+			var confirm bool
+			confirmForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewConfirm().
+						Title("A client is currently running. Logging out will disconnect it.").
+						Description("Do you want to continue?").
+						Value(&confirm),
+				),
+			)
 
-		// Get user info before clearing config
-		accountName := viper.GetString("email")
-		if accountName == "" {
-			// Try to get username from API as fallback
-			if user, err := api.GlobalClient.GetUser(); err == nil {
-				if user.Username != nil && *user.Username != "" {
-					accountName = *user.Username
-				} else if user.Email != "" {
-					accountName = user.Email
+			if err := confirmForm.Run(); err != nil {
+				logger.Error("Error: %v", err)
+				return err
+			}
+
+			if !confirm {
+				err := errors.New("logout cancelled")
+				logger.Info("%v", err)
+				return err
+			}
+
+			// Kill the client without showing TUI
+			_, err := olmClient.Exit()
+			if err != nil {
+				logger.Warning("Failed to send exit signal to client: %v", err)
+			} else {
+				// Wait for client to stop (poll until socket is gone)
+				maxWait := 10 * time.Second
+				pollInterval := 200 * time.Millisecond
+				elapsed := time.Duration(0)
+				for olmClient.IsRunning() && elapsed < maxWait {
+					time.Sleep(pollInterval)
+					elapsed += pollInterval
+				}
+				if olmClient.IsRunning() {
+					logger.Warning("Client did not stop within timeout")
 				}
 			}
 		}
+		// If version doesn't match, skip client shutdown and continue with logout
+	}
 
-		// Try to logout from server (client is always initialized)
-		if err := api.GlobalClient.Logout(); err != nil {
-			// Ignore logout errors - we'll still clear local data
-			utils.Debug("Failed to logout from server: %v", err)
-		}
+	// Check if there's an active session in the key store
+	accountStore, err := config.LoadAccountStore()
+	if err != nil {
+		logger.Error("Failed to load account store: %s", err)
+		return err
+	}
 
-		// Clear session token from config
-		if err := secrets.DeleteSessionToken(); err != nil {
-			// Ignore error if token doesn't exist (already logged out)
-			utils.Error("Failed to delete session token: %v", err)
-			return
-		}
+	if accountStore.ActiveUserID == "" {
+		logger.Success("Already logged out!")
+		return nil
+	}
 
-		// Clear user-specific config values
-		viper.Set("userId", "")
-		viper.Set("email", "")
-		viper.Set("orgId", "")
+	// Try to logout from server (client is always initialized)
+	if err := apiClient.Logout(); err != nil {
+		// Ignore logout errors - we'll still clear local data
+		logger.Debug("Failed to logout from server: %v", err)
+	}
 
-		if err := viper.WriteConfig(); err != nil {
-			utils.Error("Failed to clear config: %v", err)
-			return
-		}
+	deletedAccount := accountStore.Accounts[accountStore.ActiveUserID]
+	delete(accountStore.Accounts, accountStore.ActiveUserID)
 
-		// Re-initialize the global client without a token
-		if err := api.InitGlobalClient(); err != nil {
-			// This should never happen, but log it
-			utils.Warning("Failed to re-initialize API client: %v", err)
-		}
+	// If there are still other accounts, then we need to set the active key again.
+	// Automatically set next active user ID to the first account found.
+	if nextUserID, ok := anyKey(accountStore.Accounts); ok {
+		accountStore.ActiveUserID = nextUserID
+	} else {
+		accountStore.ActiveUserID = ""
+	}
 
-		// Print logout message with account name
-		if accountName != "" {
-			utils.Success("Logged out of Pangolin account %s", accountName)
-		} else {
-			utils.Success("Logged out of Pangolin account")
-		}
-	},
+	if err := accountStore.Save(); err != nil {
+		logger.Error("Failed to save account store: %v", err)
+		return err
+	}
+
+	// Print logout message with account name
+	logger.Success("Logged out of Pangolin account %s", deletedAccount.Email)
+
+	return nil
+}
+
+func anyKey[K comparable, V any](m map[K]V) (K, bool) {
+	var zero K
+	for k := range m {
+		return k, true
+	}
+	return zero, false
 }

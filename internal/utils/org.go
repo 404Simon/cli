@@ -5,15 +5,15 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/fosrl/cli/internal/api"
+	"github.com/fosrl/cli/internal/logger"
 	"github.com/fosrl/cli/internal/olm"
-	"github.com/spf13/viper"
 )
 
-// SelectOrg lists organizations for a user and prompts them to select one.
+// SelectOrgForm lists organizations for a user and prompts them to select one.
 // It returns the selected org ID and any error.
 // If the user has only one organization, it's automatically selected.
-func SelectOrg(userID string) (string, error) {
-	orgsResp, err := api.GlobalClient.ListUserOrgs(userID)
+func SelectOrgForm(client *api.Client, userID string) (string, error) {
+	orgsResp, err := client.ListUserOrgs(userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to list organizations: %w", err)
 	}
@@ -25,11 +25,6 @@ func SelectOrg(userID string) (string, error) {
 	if len(orgsResp.Orgs) == 1 {
 		// Auto-select if only one org
 		selectedOrg := orgsResp.Orgs[0]
-		viper.Set("orgId", selectedOrg.OrgID)
-		if err := viper.WriteConfig(); err != nil {
-			return "", fmt.Errorf("failed to save organization to config: %w", err)
-		}
-		SwitchActiveClientOrg(selectedOrg.OrgID)
 		return selectedOrg.OrgID, nil
 	}
 
@@ -62,13 +57,6 @@ func SelectOrg(userID string) (string, error) {
 		return "", fmt.Errorf("error selecting organization: %w", err)
 	}
 
-	viper.Set("orgId", selectedOrgOption.OrgID)
-	if err := viper.WriteConfig(); err != nil {
-		return "", fmt.Errorf("failed to save organization to config: %w", err)
-	}
-
-	SwitchActiveClientOrg(selectedOrgOption.OrgID)
-
 	return selectedOrgOption.OrgID, nil
 }
 
@@ -84,7 +72,7 @@ func SwitchActiveClientOrg(orgID string) bool {
 	// Get current status to check current orgId
 	currentStatus, err := client.GetStatus()
 	if err != nil {
-		Warning("Failed to get current status: %v", err)
+		logger.Warning("Failed to get current status: %v", err)
 		return false
 	}
 
@@ -96,8 +84,8 @@ func SwitchActiveClientOrg(orgID string) bool {
 	// Client is running, try to switch org
 	_, err = client.SwitchOrg(orgID)
 	if err != nil {
-		Warning("Failed to switch organization in active client: %v", err)
-		Warning("The organization has been saved to config, but the active client may still be using the previous organization.")
+		logger.Warning("Failed to switch organization in active client: %v", err)
+		logger.Warning("The organization has been saved to config, but the active client may still be using the previous organization.")
 		return false
 	}
 

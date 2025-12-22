@@ -1,11 +1,20 @@
 package selectcmd
 
 import (
+	"github.com/fosrl/cli/cmd/select/account"
+	"github.com/fosrl/cli/cmd/select/org"
 	"github.com/spf13/cobra"
 )
 
-var SelectCmd = &cobra.Command{
-	Use:   "select",
-	Short: "Select organization",
-	Long:  "Select an organization to work with",
+func SelectCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "select",
+		Short: "Select account information to use",
+		Long:  "Select account information to use",
+	}
+
+	cmd.AddCommand(account.AccountCmd())
+	cmd.AddCommand(org.OrgCmd())
+
+	return cmd
 }

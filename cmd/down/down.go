@@ -1,16 +1,23 @@
 package down
 
 import (
+	"github.com/fosrl/cli/cmd/down/client"
 	"github.com/spf13/cobra"
 )
 
-var DownCmd = &cobra.Command{
-	Use:   "down",
-	Short: "Stop a client",
-	Long:  "Stop a client connection",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Default to client subcommand if no subcommand is provided
-		// This makes "pangolin down" equivalent to "pangolin down client"
-		ClientCmd.Run(ClientCmd, args)
-	},
+func DownCmd() *cobra.Command {
+	// If no subcommand is specified, run the `client`
+	// subcommand by default.
+	cmd := client.ClientDownCmd()
+
+	cmd.Use = "down"
+	cmd.Short = "Stop a connection"
+	cmd.Long = `Bring down a connection.
+
+If ran with no subcommand, 'client' is passed.
+`
+
+	cmd.AddCommand(client.ClientDownCmd())
+
+	return cmd
 }
